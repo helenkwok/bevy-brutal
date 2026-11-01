@@ -29,12 +29,14 @@ pub struct Core {
 impl Core {
     /// Earth round 5's core: the default view's whole footprint (rings and fog to 26 km) stays
     /// procedural, so the default view was the round-4 scene byte for byte.
-    pub const E5: Core = Core { yaw: 2.75, disc: (5_000.0, 9_000.0), wedge_r: (28_000.0, 40_000.0), wedge_a: (0.78, 1.05) };
+    pub const E5: Core =
+        Core { yaw: 2.75, disc: (5_000.0, 9_000.0), wedge_r: (28_000.0, 40_000.0), wedge_a: (0.78, 1.05) };
     /// Earth round 6 (default): only the vista's near field (the valley, the forests and the
     /// big peak on the right, all within ~5 km) stays procedural; real relief (the Monte Rosa /
     /// Matterhorn side, 14-27 km out) shows from ~10 km. Wide ramps (4.5-10 km disc, 8-14 km
     /// wedge) so the height lerp reads as foothills, not a step.
-    pub const E6: Core = Core { yaw: 2.75, disc: (4_500.0, 10_000.0), wedge_r: (8_000.0, 14_000.0), wedge_a: (0.78, 1.05) };
+    pub const E6: Core =
+        Core { yaw: 2.75, disc: (4_500.0, 10_000.0), wedge_r: (8_000.0, 14_000.0), wedge_a: (0.78, 1.05) };
 }
 
 impl Default for Core {
@@ -93,7 +95,12 @@ impl GroundLevel {
         let (fu, fv) = (u - iu, v - iv);
         let w = |f: f64| {
             let g = 1.0 - f;
-            [g * g * g / 6.0, (4.0 - 6.0 * f * f + 3.0 * f * f * f) / 6.0, (1.0 + 3.0 * f + 3.0 * f * f - 3.0 * f * f * f) / 6.0, f * f * f / 6.0]
+            [
+                g * g * g / 6.0,
+                (4.0 - 6.0 * f * f + 3.0 * f * f * f) / 6.0,
+                (1.0 + 3.0 * f + 3.0 * f * f - 3.0 * f * f * f) / 6.0,
+                f * f * f / 6.0,
+            ]
         };
         let (wu, wv) = (w(fu), w(fv));
         let m = &self.mips[l];
@@ -244,7 +251,9 @@ impl Ground {
     /// Load a `GRD1` file.
     pub fn load(path: &str) -> std::io::Result<Self> {
         let b = std::fs::read(path)?;
-        let mut g = Self::from_bytes(&b).ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidData, format!("{path}: not a GRD1 ground file")))?;
+        let mut g = Self::from_bytes(&b).ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::InvalidData, format!("{path}: not a GRD1 ground file"))
+        })?;
         // GROUND_CORE="disc0,disc1,wedge0,wedge1[,angle0,angle1]" (m, rad) overrides the baked
         // core extents; GROUND_CORE=e5 / e6 selects a round's core.
         match std::env::var("GROUND_CORE").ok().as_deref().map(str::trim) {
@@ -273,7 +282,9 @@ mod tests {
 
     fn plane(size: usize, half: f64, f: impl Fn(f64, f64) -> f64) -> GroundLevel {
         let t = 2.0 * half / size as f64;
-        let h = (0..size * size).map(|k| f(-half + ((k % size) as f64 + 0.5) * t, -half + ((k / size) as f64 + 0.5) * t) as f32).collect();
+        let h = (0..size * size)
+            .map(|k| f(-half + ((k % size) as f64 + 0.5) * t, -half + ((k / size) as f64 + 0.5) * t) as f32)
+            .collect();
         GroundLevel::new(size, half, h)
     }
 
@@ -294,7 +305,12 @@ mod tests {
     #[test]
     fn weight_core_edge_and_file_round_trip() {
         let core = Core::default();
-        let g = Ground::new(7700.0, -4200.0, core, vec![plane(128, 170_000.0, |x, _| x * 0.01), plane(128, 42_500.0, |_, z| z * 0.01)]);
+        let g = Ground::new(
+            7700.0,
+            -4200.0,
+            core,
+            vec![plane(128, 170_000.0, |x, _| x * 0.01), plane(128, 42_500.0, |_, z| z * 0.01)],
+        );
         // procedural at the vista and along the default view inside the wedge, DEM elsewhere
         assert_eq!(g.weight(7700.0, -4200.0), 0.0);
         let (fx, fz) = (core.yaw.sin(), -core.yaw.cos());

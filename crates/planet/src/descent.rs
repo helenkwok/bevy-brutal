@@ -226,7 +226,8 @@ impl Descent {
         } else {
             fr.to_world(cam)
         };
-        let (yaw, pitch) = if self.view_weight(h) >= 1.0 { (self.yaw, self.pitch) } else { yaw_pitch(fr.planet_dir_to_world(fwd)) };
+        let (yaw, pitch) =
+            if self.view_weight(h) >= 1.0 { (self.yaw, self.pitch) } else { yaw_pitch(fr.planet_dir_to_world(fwd)) };
         Pose { s, h_m: h, cam, fwd, up_hint, world, yaw, pitch, ground_dist_m: g }
     }
 
@@ -377,7 +378,11 @@ mod tests {
         // world -> local -> planet -> back: sub-micrometre at the vista and 100 km out; through
         // the system frame (1.5e11 m magnitudes) the error is that level's documented resolution
         let sys_eps = coords::FrameLevel::System.precision_m();
-        for w in [DVec3::new(7700.0, 670.0, -4200.0), DVec3::new(7712.25, 1888.5, -4180.75), DVec3::new(-90_000.0, 3200.0, 60_000.0)] {
+        for w in [
+            DVec3::new(7700.0, 670.0, -4200.0),
+            DVec3::new(7712.25, 1888.5, -4180.75),
+            DVec3::new(-90_000.0, 3200.0, 60_000.0),
+        ] {
             let l = fr.world_to_local(w);
             let pl = fr.tree.convert(l, fr.planet);
             assert!((fr.to_world(pl) - w).length() < 1e-6, "{w:?} via planet");

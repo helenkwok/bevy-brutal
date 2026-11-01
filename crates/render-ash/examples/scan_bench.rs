@@ -8,10 +8,12 @@ use render_ash::{AshBackend, BackendConfig, ScanMode, cpu_exclusive_scan};
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    let reps: usize = args.iter().position(|a| a == "--reps").and_then(|i| args.get(i + 1)).map_or(20, |s| s.parse().unwrap());
+    let reps: usize =
+        args.iter().position(|a| a == "--reps").and_then(|i| args.get(i + 1)).map_or(20, |s| s.parse().unwrap());
     let sizes = [3000usize, 65_536, 262_144, 1 << 20, 4 << 20];
     for mode in [ScanMode::SharedMemory, ScanMode::Subgroup] {
-        let cfg = BackendConfig { max_instances: 16, extent: (16, 16), validation: false, frames_in_flight: 2, scan: mode };
+        let cfg =
+            BackendConfig { max_instances: 16, extent: (16, 16), validation: false, frames_in_flight: 2, scan: mode };
         let mut b = match AshBackend::new(cfg, None) {
             Ok(b) => b,
             Err(e) => {

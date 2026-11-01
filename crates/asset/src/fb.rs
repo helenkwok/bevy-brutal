@@ -24,16 +24,29 @@ pub const MAX_ALIGN: usize = 256;
 pub enum VerifyError {
     TooSmall,
     BadIdentifier,
-    OutOfBounds { at: usize },
-    Misaligned { at: usize },
-    BadVtable { at: usize },
-    BackwardOffset { at: usize },
+    OutOfBounds {
+        at: usize,
+    },
+    Misaligned {
+        at: usize,
+    },
+    BadVtable {
+        at: usize,
+    },
+    BackwardOffset {
+        at: usize,
+    },
     TooDeep,
     TooManyTables,
     TooLarge,
     /// The field is present but has the wrong size / an impossible value.
-    BadField { table: &'static str, field: u16 },
-    UnsupportedVersion { major: u16 },
+    BadField {
+        table: &'static str,
+        field: u16,
+    },
+    UnsupportedVersion {
+        major: u16,
+    },
     /// A payload failed to decode (corrupt compressed data).
     Payload(crate::rans::CodecError),
 }
@@ -52,7 +65,14 @@ pub struct Limits {
 
 impl Default for Limits {
     fn default() -> Self {
-        Limits { max_depth: 16, max_tables: 1 << 20, max_bytes: 1 << 31, max_vertices: 1 << 22, max_indices: 3 << 22, max_instances: 1 << 22 }
+        Limits {
+            max_depth: 16,
+            max_tables: 1 << 20,
+            max_bytes: 1 << 31,
+            max_vertices: 1 << 22,
+            max_indices: 3 << 22,
+            max_instances: 1 << 22,
+        }
     }
 }
 
@@ -132,7 +152,8 @@ fn write_table(buf: &mut Vec<u8>, t: &TableB) -> usize {
     // inline layout: soffset (4), then fields sorted by alignment (largest first)
     let mut order: Vec<usize> = (0..n).filter(|&i| t.fields[i].is_some()).collect();
     order.sort_by_key(|&i| std::cmp::Reverse(t.fields[i].as_ref().map_or(0, |f| f.inline_size_align().1)));
-    let max_align = order.iter().map(|&i| t.fields[i].as_ref().map_or(1, |f| f.inline_size_align().1)).max().unwrap_or(4).max(4);
+    let max_align =
+        order.iter().map(|&i| t.fields[i].as_ref().map_or(1, |f| f.inline_size_align().1)).max().unwrap_or(4).max(4);
     let mut rel = vec![0usize; n];
     let mut off = 4usize;
     // fields are laid out relative to a table start aligned to max_align

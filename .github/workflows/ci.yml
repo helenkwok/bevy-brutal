@@ -1,0 +1,141 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Least privilege: the jobs only read the repository.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  RUST_BACKTRACE: 1
+  # Slang compiler for crates/render-ash/build.rs (same version as tools/compile_shaders.sh).
+  SLANG_VERSION: "2026.20"
+  SLANG_SHA256: e863e568c204810d6e8bc31852f056aef6763c55ea9925db2db7affa060347c9
+
+# Actions are pinned to full commit SHAs (tag in the trailing comment).
+jobs:
+  fmt:
+    name: rustfmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
+          components: rustfmt
+      - run: cargo fmt --all -- --check
+
+  clippy:
+    name: clippy + check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: Install slangc (official release)
+        run: |
+          set -euo pipefail
+          url="https://github.com/shader-slang/slang/releases/download/v${SLANG_VERSION}/slang-${SLANG_VERSION}-linux-x86_64.tar.gz"
+          dir="$RUNNER_TEMP/slang"
+          mkdir -p "$dir"
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/slang.tar.gz" "$url"
+          echo "${SLANG_SHA256}  $RUNNER_TEMP/slang.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/slang.tar.gz" -C "$dir"
+          "$dir/bin/slangc" -v
+          # build.rs fails the build if an explicit $SLANGC does not run, so a broken install
+          # can never silently fall back to the checked-in SPIR-V.
+          echo "SLANGC=$dir/bin/slangc" >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
+          components: clippy
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          shared-key: lint
+      - name: cargo clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: cargo check
+        run: cargo check --workspace
+
+  test:
+    name: test (lavapipe + validation)
+    runs-on: ubuntu-latest
+    env:
+      # Khronos validation layer from the LunarG Vulkan SDK (pinned version + sha256).
+      # Ubuntu 24.04's apt package (vulkan-validationlayers 1.3.275) is too old: it classifies
+      # vkCmdFillBuffer as a COPY-stage write and reports false SYNC-HAZARD errors against our
+      # (spec-correct) CLEAR-stage barriers.
+      VULKAN_SDK_VERSION: "1.4.363.0"
+      VULKAN_SDK_SHA256: 197962f5cbf80baf2775a03336a01cee7c8745686c65aaa70d3f751ade4d7e43
+      # Synchronization validation (render-ash also requests it via VK_EXT_validation_features).
+      VK_KHRONOS_VALIDATION_VALIDATE_SYNC: "true"
+      # GPU tests panic unless the layer and sync validation are active (see tests/common).
+      BRUTAL_REQUIRE_VALIDATION: "1"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      # No GPU on hosted runners: Mesa's lavapipe is a software Vulkan device, so the render-ash GPU
+      # tests really run. They fail (not skip) on CI if no device comes up.
+      - name: Install Mesa (lavapipe), Vulkan loader + tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libvulkan1 mesa-vulkan-drivers vulkan-tools
+      - name: Install Khronos validation layer (Vulkan SDK)
+        run: |
+          set -euo pipefail
+          url="https://sdk.lunarg.com/sdk/download/${VULKAN_SDK_VERSION}/linux/vulkansdk-linux-x86_64-${VULKAN_SDK_VERSION}.tar.xz"
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/vulkansdk.tar.xz" "$url"
+          echo "${VULKAN_SDK_SHA256}  $RUNNER_TEMP/vulkansdk.tar.xz" | sha256sum -c -
+          root="${VULKAN_SDK_VERSION}/x86_64"
+          tar -xJf "$RUNNER_TEMP/vulkansdk.tar.xz" -C "$RUNNER_TEMP" \
+            "$root/lib/libVkLayer_khronos_validation.so" \
+            "$root/share/vulkan/explicit_layer.d/VkLayer_khronos_validation.json"
+          rm "$RUNNER_TEMP/vulkansdk.tar.xz"
+          # Only this layer is visible to the loader.
+          echo "VK_LAYER_PATH=$RUNNER_TEMP/$root/share/vulkan/explicit_layer.d" >> "$GITHUB_ENV"
+      - name: Select lavapipe explicitly and verify
+        run: |
+          set -euo pipefail
+          icd=$(ls /usr/share/vulkan/icd.d/lvp_icd*.json | head -n1)
+          test -f "$icd"
+          # Only the lavapipe ICD is loaded (VK_ICD_FILENAMES for older loaders).
+          echo "VK_DRIVER_FILES=$icd" >> "$GITHUB_ENV"
+          echo "VK_ICD_FILENAMES=$icd" >> "$GITHUB_ENV"
+          export VK_DRIVER_FILES="$icd" VK_ICD_FILENAMES="$icd"
+          vulkaninfo --summary | tee "$RUNNER_TEMP/vulkaninfo.txt"
+          grep -q "VK_LAYER_KHRONOS_validation" "$RUNNER_TEMP/vulkaninfo.txt" || { echo "::error::validation layer not visible"; exit 1; }
+          grep -Eq "driverName *= llvmpipe" "$RUNNER_TEMP/vulkaninfo.txt" || { echo "::error::lavapipe not selected"; exit 1; }
+          test "$(grep -c "deviceName" "$RUNNER_TEMP/vulkaninfo.txt")" -eq 1 || { echo "::error::expected exactly one Vulkan device"; exit 1; }
+      - name: Install slangc (official release)
+        run: |
+          set -euo pipefail
+          url="https://github.com/shader-slang/slang/releases/download/v${SLANG_VERSION}/slang-${SLANG_VERSION}-linux-x86_64.tar.gz"
+          dir="$RUNNER_TEMP/slang"
+          mkdir -p "$dir"
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/slang.tar.gz" "$url"
+          echo "${SLANG_SHA256}  $RUNNER_TEMP/slang.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/slang.tar.gz" -C "$dir"
+          "$dir/bin/slangc" -v
+          echo "SLANGC=$dir/bin/slangc" >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          shared-key: test
+      - name: cargo test
+        run: cargo test --workspace

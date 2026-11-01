@@ -27,11 +27,12 @@ use render_ash::voxel_gpu::VoxelJob;
 use render_ash::{AshBackend, BackendConfig, FrameStats};
 use voxel::scene::{CaveScene, Mountains, Seabed, Underground};
 use voxel::{
-    BrickMesh, BrickSamples, DensityField, SUB, ShellLayout, VoxelConfig, VoxelVertex, bricks_in, mesh_brick, plan_brick, sample_brick,
-    topology,
+    BrickMesh, BrickSamples, DensityField, SUB, ShellLayout, VoxelConfig, VoxelVertex, bricks_in, mesh_brick,
+    plan_brick, sample_brick, topology,
 };
 
-const SCENES: [&str; 8] = ["universe", "solar_system", "earth", "ocean", "mountains", "underground", "cave", "underwater"];
+const SCENES: [&str; 8] =
+    ["universe", "solar_system", "earth", "ocean", "mountains", "underground", "cave", "underwater"];
 const FOV: f32 = 0.9;
 const NEAR: f32 = 0.05;
 const FAR: f32 = 1.0e5;
@@ -94,9 +95,11 @@ impl Report {
     }
     fn json(&self, device: &str, errors: u32, warnings: u32) -> String {
         let mem_total: u64 = self.mem.iter().map(|m| m.1).sum();
-        let mem = self.mem.iter().map(|(k, v)| format!("\"{k}\":{:.2}", *v as f64 / 1048576.0)).collect::<Vec<_>>().join(",");
+        let mem =
+            self.mem.iter().map(|(k, v)| format!("\"{k}\":{:.2}", *v as f64 / 1048576.0)).collect::<Vec<_>>().join(",");
         let checks = self.checks.iter().map(|(k, v)| format!("{}:{v}", json_str(k))).collect::<Vec<_>>().join(",");
-        let metrics = self.metrics.iter().map(|(k, v)| format!("{}:{}", json_str(k), json_str(v))).collect::<Vec<_>>().join(",");
+        let metrics =
+            self.metrics.iter().map(|(k, v)| format!("{}:{}", json_str(k), json_str(v))).collect::<Vec<_>>().join(",");
         let list = |l: &[&str]| l.iter().map(|s| json_str(s)).collect::<Vec<_>>().join(",");
         format!(
             "{{\"scene\":\"{}\",\"kind\":\"{}\",\"frames\":{},\"frame_ms_p50\":{:.3},\"frame_ms_p99\":{:.3},\"gpu_ms_p50\":{:.3},\"gpu_ms_p99\":{:.3},\"triangles\":{},\"mem_mb_total\":{:.2},\"mem_mb\":{{{mem}}},\"checks\":{{{checks}}},\"all_checks_pass\":{},\"metrics\":{{{metrics}}},\"real\":[{}],\"placeholder\":[{}],\"validation_errors\":{errors},\"validation_warnings\":{warnings},\"device\":{},\"png\":\"out/scenes/{}.png\"}}",
@@ -127,15 +130,43 @@ fn gpu_ms(s: &FrameStats) -> Option<f64> {
 fn icosphere(sub: u32) -> MeshData {
     let t = (1.0 + 5f32.sqrt()) / 2.0;
     let mut v: Vec<Vec3> = [
-        [-1., t, 0.], [1., t, 0.], [-1., -t, 0.], [1., -t, 0.], [0., -1., t], [0., 1., t],
-        [0., -1., -t], [0., 1., -t], [t, 0., -1.], [t, 0., 1.], [-t, 0., -1.], [-t, 0., 1.],
+        [-1., t, 0.],
+        [1., t, 0.],
+        [-1., -t, 0.],
+        [1., -t, 0.],
+        [0., -1., t],
+        [0., 1., t],
+        [0., -1., -t],
+        [0., 1., -t],
+        [t, 0., -1.],
+        [t, 0., 1.],
+        [-t, 0., -1.],
+        [-t, 0., 1.],
     ]
     .iter()
     .map(|p| Vec3::from(*p).normalize())
     .collect();
     let mut f: Vec<[usize; 3]> = vec![
-        [0, 11, 5], [0, 5, 1], [0, 1, 7], [0, 7, 10], [0, 10, 11], [1, 5, 9], [5, 11, 4], [11, 10, 2], [10, 7, 6], [7, 1, 8],
-        [3, 9, 4], [3, 4, 2], [3, 2, 6], [3, 6, 8], [3, 8, 9], [4, 9, 5], [2, 4, 11], [6, 2, 10], [8, 6, 7], [9, 8, 1],
+        [0, 11, 5],
+        [0, 5, 1],
+        [0, 1, 7],
+        [0, 7, 10],
+        [0, 10, 11],
+        [1, 5, 9],
+        [5, 11, 4],
+        [11, 10, 2],
+        [10, 7, 6],
+        [7, 1, 8],
+        [3, 9, 4],
+        [3, 4, 2],
+        [3, 2, 6],
+        [3, 6, 8],
+        [3, 8, 9],
+        [4, 9, 5],
+        [2, 4, 11],
+        [6, 2, 10],
+        [8, 6, 7],
+        [9, 8, 1],
     ];
     for _ in 0..sub {
         let mut mid: HashMap<(usize, usize), usize> = HashMap::new();
@@ -169,11 +200,18 @@ fn palette(k: u32) -> Vec3 {
 /// material id whose mesh.slang palette colour is closest to `rgb`.
 fn material(mesh: u32, rgb: [f32; 3]) -> u32 {
     let t = Vec3::from(rgb);
-    (0..256u32).min_by(|&a, &b| (palette(mesh * 7 + a) - t).length().total_cmp(&(palette(mesh * 7 + b) - t).length())).unwrap()
+    (0..256u32)
+        .min_by(|&a, &b| (palette(mesh * 7 + a) - t).length().total_cmp(&(palette(mesh * 7 + b) - t).length()))
+        .unwrap()
 }
 
 fn inst(mesh: u32, mat: u32, pos: Vec3, scale: Vec3) -> InstanceGpu {
-    InstanceGpu { model: Mat4::from_scale_rotation_translation(scale, Quat::IDENTITY, pos).to_cols_array_2d(), mesh_id: mesh, material_id: mat, _pad: [0; 2] }
+    InstanceGpu {
+        model: Mat4::from_scale_rotation_translation(scale, Quat::IDENTITY, pos).to_cols_array_2d(),
+        mesh_id: mesh,
+        material_id: mat,
+        _pad: [0; 2],
+    }
 }
 
 /// Scaled-space impostor placement: camera-relative `rel` (f64 metres), diameter `diam`, minimum
@@ -289,13 +327,23 @@ fn run_flythrough(name: &str, o: &Opts, b: &mut AshBackend, r: &mut Report) {
         objs.push((u.planet_pos(i), 2.0 * pl.2, 0.012, SPHERE, material(SPHERE, pl.3)));
     }
     let earth_mat = material(SPHERE, [0.2, 0.4, 0.9]);
-    objs.push((WorldPos { frame: u.earth, p: DVec3::new(3.844e8, 0.0, 0.0) }, 3.47e6, 0.006, SPHERE, material(SPHERE, [0.7, 0.7, 0.7])));
+    objs.push((
+        WorldPos { frame: u.earth, p: DVec3::new(3.844e8, 0.0, 0.0) },
+        3.47e6,
+        0.006,
+        SPHERE,
+        material(SPHERE, [0.7, 0.7, 0.7]),
+    ));
     // landing site (local frame, +X is up): placeholder buildings
     let site_objs: Vec<(DVec3, DVec3, u32)> = (0..24)
         .map(|i| {
             let (z, y) = (25.0 + (i / 6) as f64 * 30.0, ((i % 6) as f64 - 2.5) * 18.0);
             let hgt = 4.0 + 14.0 * rnd();
-            (DVec3::new(hgt / 2.0, y, z), DVec3::new(hgt, 8.0, 8.0), material(CUBE, [0.6 + 0.3 * rnd() as f32, 0.6, 0.65]))
+            (
+                DVec3::new(hgt / 2.0, y, z),
+                DVec3::new(hgt, 8.0, 8.0),
+                material(CUBE, [0.6 + 0.3 * rnd() as f32, 0.6, 0.65]),
+            )
         })
         .collect();
     let ground_mat = material(CUBE, [0.3, 0.55, 0.25]);
@@ -308,7 +356,10 @@ fn run_flythrough(name: &str, o: &Opts, b: &mut AshBackend, r: &mut Report) {
         ),
         "solar_system" => {
             let e = t.convert(WorldPos { frame: u.sol, p: DVec3::new(0.0, 2e12, 6e12) }, u.earth).p;
-            (vec![Leg { frame: u.earth, start: e, end: DVec3::new(2.5e6, 4e6, 6.5e6) }], vec![FrameLevel::System, FrameLevel::Planet])
+            (
+                vec![Leg { frame: u.earth, start: e, end: DVec3::new(2.5e6, 4e6, 6.5e6) }],
+                vec![FrameLevel::System, FrameLevel::Planet],
+            )
         }
         _ => (
             vec![Leg { frame: u.site, start: DVec3::new(3.0e7, 4e6, -6e6), end: DVec3::new(2.0, 0.0, 0.0) }],
@@ -414,7 +465,14 @@ fn run_flythrough(name: &str, o: &Opts, b: &mut AshBackend, r: &mut Report) {
         }
         let alt = t.delta(WorldPos { frame: u.earth, p: DVec3::ZERO }, cam).length() - EARTH_R;
         if alt > 3e4 || name != "earth" {
-            push(t.delta(WorldPos { frame: u.earth, p: DVec3::ZERO }, cam), 2.0 * EARTH_R, 0.012, SPHERE, earth_mat, &mut instances);
+            push(
+                t.delta(WorldPos { frame: u.earth, p: DVec3::ZERO }, cam),
+                2.0 * EARTH_R,
+                0.012,
+                SPHERE,
+                earth_mat,
+                &mut instances,
+            );
         }
         if name == "earth" && alt < 3e5 {
             // C1 far-field placeholder: a flat 200 km ground tile at the site, + buildings (local frame)
@@ -439,7 +497,9 @@ fn run_flythrough(name: &str, o: &Opts, b: &mut AshBackend, r: &mut Report) {
         let lookf = look.as_vec3();
         let view = look_at(Vec3::ZERO, lookf, up.as_vec3());
         let vp = (proj * view).to_cols_array_2d();
-        if let Some(s) = b.render(&FrameSnapshot { view_proj: vp, instances: &instances, frame_index: f as u64 }).unwrap() {
+        if let Some(s) =
+            b.render(&FrameSnapshot { view_proj: vp, instances: &instances, frame_index: f as u64 }).unwrap()
+        {
             r.gpu_ms.extend(gpu_ms(&s));
         }
         if f == png_frame {
@@ -503,7 +563,10 @@ fn run_flythrough(name: &str, o: &Opts, b: &mut AshBackend, r: &mut Report) {
         "floating origin (same FloatingOrigin the Bevy plugin uses), camera-relative instances through render-ash",
         "GPU cull + indirect draw of all objects",
     ]);
-    r.placeholder.extend(["stars/planets/sun/moon are instanced spheres/octahedra impostors in scaled space (min angular size)", "no atmosphere (Prompt E), no lighting from the sun position"]);
+    r.placeholder.extend([
+        "stars/planets/sun/moon are instanced spheres/octahedra impostors in scaled space (min angular size)",
+        "no atmosphere (Prompt E), no lighting from the sun position",
+    ]);
     if name == "earth" {
         r.placeholder.extend([
             "earth surface: flat 200 km ground tile + boxes below 30 km altitude (C1 cube-sphere quadtree + C3 handoff not implemented)",
@@ -527,12 +590,18 @@ fn run_ocean(o: &Opts, b: &mut AshBackend, r: &mut Report) {
         instances.push(inst(CUBE, sea, Vec3::new(0.0, -0.5, 0.0) - cam, Vec3::new(40_000.0, 1.0, 40_000.0)));
         for i in 0..40 {
             let a = i as f32 * 0.61;
-            let p = Vec3::new(a.sin() * (30.0 + i as f32 * 12.0), 0.4 + 0.3 * (f as f32 * 0.1 + i as f32).sin(), 20.0 + i as f32 * 15.0);
+            let p = Vec3::new(
+                a.sin() * (30.0 + i as f32 * 12.0),
+                0.4 + 0.3 * (f as f32 * 0.1 + i as f32).sin(),
+                20.0 + i as f32 * 15.0,
+            );
             instances.push(inst(OCTA, buoy, p - cam, Vec3::splat(1.5)));
         }
         let view = look_at(Vec3::ZERO, Vec3::new(0.0, -0.08, 1.0), Vec3::Y);
         let vp = (proj * view).to_cols_array_2d();
-        if let Some(s) = b.render(&FrameSnapshot { view_proj: vp, instances: &instances, frame_index: f as u64 }).unwrap() {
+        if let Some(s) =
+            b.render(&FrameSnapshot { view_proj: vp, instances: &instances, frame_index: f as u64 }).unwrap()
+        {
             r.gpu_ms.extend(gpu_ms(&s));
         }
         r.frame_ms.push(t0.elapsed().as_secs_f64() * 1e3);
@@ -617,7 +686,9 @@ fn run_voxel(name: &str, o: &Opts, b: &mut AshBackend, r: &mut Report) {
     let layout = ShellLayout::camera_centred(&grid, cam_lattice, &spec.shells);
     let max_lod = layout.max_lod();
     let coarse = grid.brick_size() as i64 * grid.step(max_lod);
-    let al = |v: i64, up: bool| if up { -coords::floor_div(-v, coarse) * coarse } else { coords::floor_div(v, coarse) * coarse };
+    let al = |v: i64, up: bool| {
+        if up { -coords::floor_div(-v, coarse) * coarse } else { coords::floor_div(v, coarse) * coarse }
+    };
     // region: the requested box, grown so the outermost shell box sits >= 1 coarsest brick inside
     // (finer boxes touching the region cut would let Φ move cut-boundary vertices off the plane)
     let outer = layout.boxes.last().copied().expect("at least one shell");
@@ -638,15 +709,20 @@ fn run_voxel(name: &str, o: &Opts, b: &mut AshBackend, r: &mut Report) {
         .collect();
     let sample_ms = t0.elapsed().as_secs_f64() * 1e3;
     let sample_bytes: usize = sampled.iter().map(|s| s.0.bytes()).sum();
-    let occupied: Vec<&(BrickSamples, u8, Option<voxel::Aabb>)> = sampled.iter().filter(|s| s.0.has_sign_change()).collect();
-    let jobs: Vec<VoxelJob<'_>> = occupied.iter().map(|s| VoxelJob { samples: &s.0, transitions: s.1, finer: s.2 }).collect();
+    let occupied: Vec<&(BrickSamples, u8, Option<voxel::Aabb>)> =
+        sampled.iter().filter(|s| s.0.has_sign_change()).collect();
+    let jobs: Vec<VoxelJob<'_>> =
+        occupied.iter().map(|s| VoxelJob { samples: &s.0, transitions: s.1, finer: s.2 }).collect();
     let tg = Instant::now();
     let gpu = b.mesh_voxels_gpu(&cfg, &jobs).expect("gpu mesh");
     let gpu_mesh_wall_ms = tg.elapsed().as_secs_f64() * 1e3;
     let tc = Instant::now();
     let cpu: Vec<BrickMesh> = jobs.par_iter().map(|j| mesh_brick(&cfg, j.samples, j.transitions, j.finer)).collect();
     let cpu_mesh_ms = tc.elapsed().as_secs_f64() * 1e3;
-    let exact = cpu.iter().zip(&gpu.bricks).all(|(c, g)| c.indices.iter().map(|&i| c.ipos[i as usize]).eq(g.ipos.iter().copied()));
+    let exact = cpu
+        .iter()
+        .zip(&gpu.bricks)
+        .all(|(c, g)| c.indices.iter().map(|&i| c.ipos[i as usize]).eq(g.ipos.iter().copied()));
     let topo = topology(cpu.iter());
     // every open edge must lie on the (exact, integer) region boundary: the interior is watertight
     let (lo, hi) = (region.0.map(|v| v * SUB), region.1.map(|v| v * SUB));
@@ -658,12 +734,19 @@ fn run_voxel(name: &str, o: &Opts, b: &mut AshBackend, r: &mut Report) {
             }
         }
     }
-    let on_boundary = |p: [i64; 3], q: [i64; 3]| (0..3).any(|i| (p[i] == lo[i] && q[i] == lo[i]) || (p[i] == hi[i] && q[i] == hi[i]));
-    let interior_open = directed.keys().filter(|&&(a, c)| !directed.contains_key(&(c, a)) && !on_boundary(a, c)).count();
+    let on_boundary =
+        |p: [i64; 3], q: [i64; 3]| (0..3).any(|i| (p[i] == lo[i] && q[i] == lo[i]) || (p[i] == hi[i] && q[i] == hi[i]));
+    let interior_open =
+        directed.keys().filter(|&&(a, c)| !directed.contains_key(&(c, a)) && !on_boundary(a, c)).count();
     if std::env::var_os("SCENES_DEBUG").is_some() {
         eprintln!("region sub lo {lo:?} hi {hi:?}");
         for (a, c) in directed.keys().filter(|&&(a, c)| !directed.contains_key(&(c, a)) && !on_boundary(a, c)).take(6) {
-            let owner: Vec<_> = cpu.iter().zip(&jobs).filter(|(m, _)| m.ipos.contains(a)).map(|(_, j)| (j.samples.coord, j.transitions)).collect();
+            let owner: Vec<_> = cpu
+                .iter()
+                .zip(&jobs)
+                .filter(|(m, _)| m.ipos.contains(a))
+                .map(|(_, j)| (j.samples.coord, j.transitions))
+                .collect();
             eprintln!("open {a:?} -> {c:?} owners {owner:?}");
         }
     }
@@ -687,7 +770,8 @@ fn run_voxel(name: &str, o: &Opts, b: &mut AshBackend, r: &mut Report) {
     // draw the GPU-meshed triangles (host round-trip; C4's GPU brick pool would keep them resident)
     let mut verts: Vec<VoxelVertex> = Vec::with_capacity(gpu.triangles * 3);
     for g in &gpu.bricks {
-        verts.extend(g.ipos.iter().zip(&g.normals).map(|(p, n)| VoxelVertex { pos: cfg.sub_to_render(*p), normal: *n }));
+        verts
+            .extend(g.ipos.iter().zip(&g.normals).map(|(p, n)| VoxelVertex { pos: cfg.sub_to_render(*p), normal: *n }));
     }
     let idx: Vec<u32> = (0..verts.len() as u32).collect();
     b.add_static_mesh(&verts, &idx).unwrap();
@@ -706,7 +790,9 @@ fn run_voxel(name: &str, o: &Opts, b: &mut AshBackend, r: &mut Report) {
         }
         let view = look_at(eye, spec.look_at, Vec3::Y);
         let vp = (proj * view).to_cols_array_2d();
-        if let Some(st) = b.render(&FrameSnapshot { view_proj: vp, instances: &instances, frame_index: f as u64 }).unwrap() {
+        if let Some(st) =
+            b.render(&FrameSnapshot { view_proj: vp, instances: &instances, frame_index: f as u64 }).unwrap()
+        {
             r.gpu_ms.extend(gpu_ms(&st));
         }
         r.frame_ms.push(t0.elapsed().as_secs_f64() * 1e3);
@@ -733,8 +819,14 @@ fn run_voxel(name: &str, o: &Opts, b: &mut AshBackend, r: &mut Report) {
     r.check("no bricks refused by plan_brick (H8)", refused == 0);
     r.check("GPU Transvoxel == CPU mesher (positions bit-exact, same order)", exact && gpu.triangles == topo.triangles);
     r.check("interior watertight: open edges only on the region boundary", interior_open == 0);
-    r.check("no non-manifold edges / orientation conflicts", topo.non_manifold_edges == 0 && topo.orientation_conflicts == 0);
-    r.check("no degenerate triangles, no inward closed components, all finite", topo.degenerate == 0 && topo.flipped == 0 && topo.non_finite == 0);
+    r.check(
+        "no non-manifold edges / orientation conflicts",
+        topo.non_manifold_edges == 0 && topo.orientation_conflicts == 0,
+    );
+    r.check(
+        "no degenerate triangles, no inward closed components, all finite",
+        topo.degenerate == 0 && topo.flipped == 0 && topo.non_finite == 0,
+    );
     r.check("more than one LOD carries surface (shells exercised)", lods.iter().filter(|&&c| c > 0).count() >= 2);
     r.real.extend([
         "C2: camera-centred LOD shells, Transvoxel transition cells + global Φ seam field (multi-coarser-face bricks)",
@@ -774,16 +866,23 @@ fn main() {
         voxel_m: arg(&args, "--voxel").map_or(0.25, |s| s.parse().unwrap()),
         validate: args.iter().any(|a| a == "--validate"),
     };
-    let names: Vec<&str> = if which == "all" { SCENES.to_vec() } else { vec![SCENES.iter().copied().find(|s| *s == which).unwrap_or_else(|| {
-        eprintln!("unknown scene {which}; one of {}|all", SCENES.join("|"));
-        std::process::exit(2)
-    })] };
+    let names: Vec<&str> = if which == "all" {
+        SCENES.to_vec()
+    } else {
+        vec![SCENES.iter().copied().find(|s| *s == which).unwrap_or_else(|| {
+            eprintln!("unknown scene {which}; one of {}|all", SCENES.join("|"));
+            std::process::exit(2)
+        })]
+    };
     std::fs::create_dir_all("out/scenes").unwrap();
     let mut all_ok = true;
     for name in names {
         let (e0, w0) = message_counts();
-        let mut b = AshBackend::new(BackendConfig { max_instances: 8192, extent: (o.w, o.h), validation: o.validate, ..Default::default() }, None)
-            .expect("backend");
+        let mut b = AshBackend::new(
+            BackendConfig { max_instances: 8192, extent: (o.w, o.h), validation: o.validate, ..Default::default() },
+            None,
+        )
+        .expect("backend");
         b.set_meshes(&[icosphere(3), cube(), octahedron()]).unwrap();
         let mut r = Report { name: name.into(), ..Default::default() };
         match name {

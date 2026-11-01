@@ -40,7 +40,8 @@ fn env_or<T: std::str::FromStr>(k: &str, d: T) -> T {
 }
 
 fn main() -> AppExit {
-    let cfg = RunConfig { particles: env_or("PARTICLES", 100_000), frames: env_or("FRAMES", 300), started: Instant::now() };
+    let cfg =
+        RunConfig { particles: env_or("PARTICLES", 100_000), frames: env_or("FRAMES", 300), started: Instant::now() };
     let mut app = App::new();
 
     #[cfg(feature = "windowed")]
@@ -69,7 +70,8 @@ fn setup_camera(mut vp: ResMut<bridge::ViewProj>) {
     // `bevy::math::proj`; Mat4::perspective_rh/look_at_rh are deprecated in glam 0.33.
     let mut proj = bevy::math::proj::perspective(60f32.to_radians(), 16.0 / 9.0, 0.1, 500.0);
     proj.y_axis.y = -proj.y_axis.y; // +Y up -> Vulkan +Y down
-    let view = Transform::from_xyz(0.0, 45.0, 90.0).looking_at(Vec3::new(0.0, 25.0, 0.0), Vec3::Y).to_matrix().inverse();
+    let view =
+        Transform::from_xyz(0.0, 45.0, 90.0).looking_at(Vec3::new(0.0, 25.0, 0.0), Vec3::Y).to_matrix().inverse();
     vp.0 = proj * view;
 }
 
@@ -90,7 +92,13 @@ fn init_windowed_backend(world: &mut World) {
     };
     match render_ash::AshBackend::new_windowed(handles, cfg) {
         Ok(b) => {
-            info!("ash windowed backend up on '{}' ({}x{}, validation: {})", b.device_name(), b.extent.width, b.extent.height, b.ctx.validation_enabled);
+            info!(
+                "ash windowed backend up on '{}' ({}x{}, validation: {})",
+                b.device_name(),
+                b.extent.width,
+                b.extent.height,
+                b.ctx.validation_enabled
+            );
             world.insert_non_send(b);
         }
         Err(e) => {
@@ -154,7 +162,10 @@ fn spawn_particles(mut commands: Commands, cfg: Res<RunConfig>) {
         let f = i as f32;
         (
             Transform::from_xyz((f * 0.37).sin() * 20.0, 50.0 + (f * 0.11).cos() * 10.0, (f * 0.53).cos() * 20.0),
-            Particle { velocity: Vec3::new((f * 1.3).sin(), 5.0, (f * 0.7).cos()), life: 2.0 + (i % 300) as f32 / 60.0 },
+            Particle {
+                velocity: Vec3::new((f * 1.3).sin(), 5.0, (f * 0.7).cos()),
+                life: 2.0 + (i % 300) as f32 / 60.0,
+            },
             MeshRef { mesh_id: (i % 4) as u32, material_id: 0 },
         )
     }));

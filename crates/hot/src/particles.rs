@@ -54,8 +54,12 @@ fn lanes(s: &mut [f32]) -> core::slice::IterMut<'_, [f32; LANES]> {
 /// Integrate one lane-aligned block. All slices have the same len, a multiple of LANES.
 #[allow(clippy::too_many_arguments)]
 fn integrate_block(
-    px: &mut [f32], py: &mut [f32], pz: &mut [f32],
-    vx: &mut [f32], vy: &mut [f32], vz: &mut [f32],
+    px: &mut [f32],
+    py: &mut [f32],
+    pz: &mut [f32],
+    vx: &mut [f32],
+    vy: &mut [f32],
+    vz: &mut [f32],
     life: &mut [f32],
     prm: ParticleParams,
 ) -> usize {
@@ -67,13 +71,7 @@ fn integrate_block(
     let zero = f32x8::ZERO;
     let mut live = 0usize;
 
-    let it = lanes(px)
-        .zip(lanes(py))
-        .zip(lanes(pz))
-        .zip(lanes(vx))
-        .zip(lanes(vy))
-        .zip(lanes(vz))
-        .zip(lanes(life));
+    let it = lanes(px).zip(lanes(py)).zip(lanes(pz)).zip(lanes(vx)).zip(lanes(vy)).zip(lanes(vz)).zip(lanes(life));
     for ((((((px, py), pz), vx), vy), vz), life) in it {
         let l = load(life);
         let alive = l.simd_gt(zero); // all-ones lanes where alive
@@ -187,8 +185,12 @@ mod tests {
             assert_eq!(la, lc, "live count scalar vs par");
         }
         for (name, x, y, z) in [
-            ("px", &a.px, &b.px, &c.px), ("py", &a.py, &b.py, &c.py), ("pz", &a.pz, &b.pz, &c.pz),
-            ("vx", &a.vx, &b.vx, &c.vx), ("vy", &a.vy, &b.vy, &c.vy), ("vz", &a.vz, &b.vz, &c.vz),
+            ("px", &a.px, &b.px, &c.px),
+            ("py", &a.py, &b.py, &c.py),
+            ("pz", &a.pz, &b.pz, &c.pz),
+            ("vx", &a.vx, &b.vx, &c.vx),
+            ("vy", &a.vy, &b.vy, &c.vy),
+            ("vz", &a.vz, &b.vz, &c.vz),
             ("life", &a.life, &b.life, &c.life),
         ] {
             let e1 = max_rel_err(x, y);

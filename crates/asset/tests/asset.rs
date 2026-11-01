@@ -30,8 +30,13 @@ fn world() -> &'static World {
         let layout = ShellLayout::camera_centred(&grid, [l(cx), l(gy), l(cz)], &[1, 1]);
         let b0 = layout.boxes[0];
         let coarse = 128;
-        let al = |v: i64, up: bool| if up { (v + coarse - 1).div_euclid(coarse) * coarse } else { v.div_euclid(coarse) * coarse };
-        let region = ([al(b0.lo[0], false), al(l(gy) - 96, false), al(b0.lo[2], false)], [al(b0.hi[0], true), al(l(gy) + 96, true), al(b0.hi[2], true)]);
+        let al = |v: i64, up: bool| {
+            if up { (v + coarse - 1).div_euclid(coarse) * coarse } else { v.div_euclid(coarse) * coarse }
+        };
+        let region = (
+            [al(b0.lo[0], false), al(l(gy) - 96, false), al(b0.lo[2], false)],
+            [al(b0.hi[0], true), al(l(gy) + 96, true), al(b0.hi[2], true)],
+        );
         let world = build_world_filtered(&field, &cfg, &layout, region, layout.max_lod()).unwrap();
         assert!(world.bricks.len() >= 8, "test world has {} bricks", world.bricks.len());
         World { cfg, world, layout }
@@ -45,7 +50,9 @@ fn write(w: &World, opts: MeshOpts) -> Vec<u8> {
 }
 
 fn decode_all(f: &File, cfg: &VoxelConfig, q: u8) -> Vec<(BrickCoord, BrickMesh)> {
-    (0..f.bricks().len()).map(|i| (f.bricks()[i].coord, f.decode_mesh(i).unwrap().unwrap().to_brick_mesh(cfg, f.bricks()[i].coord, q))).collect()
+    (0..f.bricks().len())
+        .map(|i| (f.bricks()[i].coord, f.decode_mesh(i).unwrap().unwrap().to_brick_mesh(cfg, f.bricks()[i].coord, q)))
+        .collect()
 }
 
 fn angle_deg(a: [f32; 3], b: [f32; 3]) -> f64 {
@@ -66,17 +73,26 @@ fn a1_lossless_round_trip_both_connectivity_modes() {
         for (c, d) in decode_all(&f, &w.cfg, 0) {
             let o = &w.world.bricks[&c];
             assert_eq!(d.ipos.len(), o.ipos.len());
-            assert_eq!(mesh::canonical_tris(&d.ipos, &d.indices), mesh::canonical_tris(&o.ipos, &o.indices), "{c:?} {conn:?}");
+            assert_eq!(
+                mesh::canonical_tris(&d.ipos, &d.indices),
+                mesh::canonical_tris(&o.ipos, &o.indices),
+                "{c:?} {conn:?}"
+            );
             if conn == ConnMode::Sequential {
                 assert_eq!(d.indices, o.indices, "sequential keeps the exact index buffer");
                 assert_eq!(d.ipos, o.ipos);
                 assert_eq!(d.dirs, o.dirs);
             }
-            let orig: HashMap<[i64; 3], (usize, u8)> = o.ipos.iter().enumerate().map(|(i, p)| (*p, (i, o.dirs[i]))).collect();
+            let orig: HashMap<[i64; 3], (usize, u8)> =
+                o.ipos.iter().enumerate().map(|(i, p)| (*p, (i, o.dirs[i]))).collect();
             for (i, p) in d.ipos.iter().enumerate() {
                 let (oi, od) = orig[p];
                 assert_eq!(d.dirs[i], od);
-                assert_eq!(d.vertices[i].pos.map(f32::to_bits), o.vertices[oi].pos.map(f32::to_bits), "f32 render position bit-identical");
+                assert_eq!(
+                    d.vertices[i].pos.map(f32::to_bits),
+                    o.vertices[oi].pos.map(f32::to_bits),
+                    "f32 render position bit-identical"
+                );
                 worst = worst.max(angle_deg(d.vertices[i].normal, o.vertices[oi].normal));
             }
         }
@@ -93,7 +109,10 @@ fn a2_decoded_world_is_still_closed() {
     let t0 = topology(w.world.bricks.values());
     let t1 = topology(dec.iter().map(|(_, m)| m));
     assert!(t0.is_clean() && t1.is_clean());
-    assert_eq!((t0.boundary_edges, t0.non_manifold_edges, t0.orientation_conflicts), (t1.boundary_edges, t1.non_manifold_edges, t1.orientation_conflicts));
+    assert_eq!(
+        (t0.boundary_edges, t0.non_manifold_edges, t0.orientation_conflicts),
+        (t1.boundary_edges, t1.non_manifold_edges, t1.orientation_conflicts)
+    );
     let _ = &w.layout;
 }
 
@@ -222,7 +241,11 @@ fn a6_instances_bounded_error() {
         assert_eq!((s.mesh, s.material), (d.mesh, d.material));
     }
     let raw = src.len() * size_of::<lowlevel_abi::InstanceGpu>();
-    assert!(buf.len() * 6 < raw, "uniformly random synthetic instances (real ones: see the bench) {} B vs {raw} B GPU", buf.len());
+    assert!(
+        buf.len() * 6 < raw,
+        "uniformly random synthetic instances (real ones: see the bench) {} B vs {raw} B GPU",
+        buf.len()
+    );
 }
 
 #[test]
@@ -263,7 +286,9 @@ fn a7_schema_evolution_both_directions() {
         .with(schema::meshb::FLAGS, Field::U8(h.flags))
         .with(schema::meshb::RANS, Field::Bytes(log.encode(&models), 4))
         .with(schema::meshb::BITS, Field::Bytes(log.bits.finished(), 4));
-    let brick = TableB::default().with(schema::brick::KEY, Field::Struct(key, 8)).with(schema::brick::MESH, Field::Table(Box::new(blob)));
+    let brick = TableB::default()
+        .with(schema::brick::KEY, Field::Struct(key, 8))
+        .with(schema::brick::MESH, Field::Table(Box::new(blob)));
     let root = TableB::default()
         .with(schema::root::VOXEL_M, Field::F64(0.5))
         .with(schema::root::BRICK_SIZE, Field::U16(32))
@@ -361,7 +386,16 @@ fn a9_verifier_fuzz_never_panics() {
             3 => {
                 // overwrite an aligned u32 (offsets, counts, soffsets) with a hostile value
                 let p = rng.below(b.len() / 4) * 4;
-                let v: u32 = [0, 1, 4, 0xFFFF_FFFF, 0x8000_0000, b.len() as u32, (b.len() as u32).wrapping_sub(4), rng.next() as u32][rng.below(8)];
+                let v: u32 = [
+                    0,
+                    1,
+                    4,
+                    0xFFFF_FFFF,
+                    0x8000_0000,
+                    b.len() as u32,
+                    (b.len() as u32).wrapping_sub(4),
+                    rng.next() as u32,
+                ][rng.below(8)];
                 b[p..p + 4].copy_from_slice(&v.to_le_bytes());
             }
             4 => {
@@ -471,7 +505,11 @@ fn a11_banded_samples_format_and_type_split() {
         let (mask, finer) = plan_brick(&cfg.grid, &lay, b.coord).unwrap();
         let s = sample_brick(&field, &cfg, b.coord, mask).unwrap();
         let d = f.decode_samples(i).unwrap().unwrap();
-        assert_eq!((d.d.clone(), d.faces.clone()), (s.d.clone(), s.faces.clone()), "minor-1 samples must read unchanged");
+        assert_eq!(
+            (d.d.clone(), d.faces.clone()),
+            (s.d.clone(), s.faces.clone()),
+            "minor-1 samples must read unchanged"
+        );
         let m = f.decode_mesh_samples(i).unwrap().unwrap();
         assert_eq!((m.band(), m.transitions()), (0, mask));
         assert_eq!(m.mesh(&cfg, finer), mesh_brick(&cfg, &s, mask, finer));
@@ -498,13 +536,20 @@ fn a11_banded_samples_format_and_type_split() {
     for (i, (s, mask, finer)) in src.iter().enumerate() {
         assert_eq!(ff.decode_samples(i).unwrap().unwrap().d, s.d);
         assert_eq!(fbd.bricks()[i].samples.unwrap().0.band, 1024);
-        assert!(matches!(fbd.decode_samples(i).unwrap(), Err(CodecError::Banded)), "banded payload must not read as density");
+        assert!(
+            matches!(fbd.decode_samples(i).unwrap(), Err(CodecError::Banded)),
+            "banded payload must not read as density"
+        );
         let m = fbd.decode_mesh_samples(i).unwrap().unwrap();
         assert_eq!((m.band(), m.transitions()), (1024, *mask));
         assert_eq!(m.mesh(&cfg, *finer), mesh_brick(&cfg, s, *mask, *finer), "banded mesh must be bit-identical");
         assert!(m.into_density().is_none());
     }
-    let changed = src.iter().enumerate().filter(|(i, (s, _, _))| fbd.decode_mesh_samples(*i).unwrap().unwrap().samples_for_meshing_only().d != s.d).count();
+    let changed = src
+        .iter()
+        .enumerate()
+        .filter(|(i, (s, _, _))| fbd.decode_mesh_samples(*i).unwrap().unwrap().samples_for_meshing_only().d != s.d)
+        .count();
     assert!(changed > 0, "the band must actually clamp something");
     // full data labelled as banded is not a fixed point of the band: rejected
     let bad = AlignedBytes::from_slice(&bad.finish());
@@ -532,8 +577,20 @@ fn a12_band_bit_identical_across_lods_and_transitions() {
                 ([0, 1, 2].map(|k| lo[k].min(o[k])), [0, 1, 2].map(|k| hi[k].max(o[k] + e)))
             })
         }),
-        ("blob", &cfg16, Box::new(BlobScene { radius: 9.0, seed: 3 }), ShellLayout::camera_centred(&grid16, [5, -3, 7], &[1, 1, 1]), ([-128; 3], [128; 3])),
-        ("fuzz", &cfg16, Box::new(Adversarial { seed: 4, voxel_m: 0.25, radius_m: 7.0 }), ShellLayout::camera_centred(&grid16, [20, 4, -6], &[1, 1]), ([-128; 3], [128; 3])),
+        (
+            "blob",
+            &cfg16,
+            Box::new(BlobScene { radius: 9.0, seed: 3 }),
+            ShellLayout::camera_centred(&grid16, [5, -3, 7], &[1, 1, 1]),
+            ([-128; 3], [128; 3]),
+        ),
+        (
+            "fuzz",
+            &cfg16,
+            Box::new(Adversarial { seed: 4, voxel_m: 0.25, radius_m: 7.0 }),
+            ShellLayout::camera_centred(&grid16, [20, 4, -6], &[1, 1]),
+            ([-128; 3], [128; 3]),
+        ),
     ];
     for (name, cfg, field, lay, region) in &cases {
         let mut src = Vec::new();
@@ -565,15 +622,25 @@ fn a12_band_bit_identical_across_lods_and_transitions() {
         // the count is terrain luck (3 -> 2 when the round-10 outcrop fix reshaped a tor in the
         // fixture box), so there only require that transitions and both LODs are exercised
         let min_t = if *name == "alpine" { 1 } else { 3 };
-        assert!(with_t >= min_t && lods.len() >= 2, "{name}: {} bricks, {with_t} with transitions, lods {lods:?}", src.len());
+        assert!(
+            with_t >= min_t && lods.len() >= 2,
+            "{name}: {} bricks, {with_t} with transitions, lods {lods:?}",
+            src.len()
+        );
         let t = topology(meshes.iter());
         let full: Vec<BrickMesh> = src.iter().map(|(s, m, f)| mesh_brick(cfg, s, *m, *f)).collect();
         assert_eq!(format!("{t:?}"), format!("{:?}", topology(full.iter())), "{name}");
         // the Alpine test region cuts the terrain open at its outer box; the blob scenes are closed
         if *name != "alpine" {
-            assert!(t.boundary_edges == 0 && t.non_manifold_edges == 0 && t.orientation_conflicts == 0, "{name}: {t:?}");
+            assert!(
+                t.boundary_edges == 0 && t.non_manifold_edges == 0 && t.orientation_conflicts == 0,
+                "{name}: {t:?}"
+            );
         }
         assert!(t.non_manifold_edges == 0 && t.orientation_conflicts == 0, "{name}: {t:?}");
-        eprintln!("{name}: {} bricks ({with_t} with transitions, LODs {lods:?}) bit-identical from the banded file; topology equal to full", src.len());
+        eprintln!(
+            "{name}: {} bricks ({with_t} with transitions, LODs {lods:?}) bit-identical from the banded file; topology equal to full",
+            src.len()
+        );
     }
 }

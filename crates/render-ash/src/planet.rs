@@ -32,7 +32,11 @@ const LUT_GROUPS: [(u32, u32); 4] = [(32, 8), (4, 4), (4, 4), (1, 1)];
 const LUT_FLOAT4S: u64 = 18432 + 64;
 const COLOR: vk::Format = vk::Format::R16G16B16A16_SFLOAT;
 const DEPTH: vk::Format = vk::Format::D32_SFLOAT;
-const STAGES: vk::ShaderStageFlags = vk::ShaderStageFlags::from_raw(vk::ShaderStageFlags::VERTEX.as_raw() | vk::ShaderStageFlags::FRAGMENT.as_raw() | vk::ShaderStageFlags::COMPUTE.as_raw());
+const STAGES: vk::ShaderStageFlags = vk::ShaderStageFlags::from_raw(
+    vk::ShaderStageFlags::VERTEX.as_raw()
+        | vk::ShaderStageFlags::FRAGMENT.as_raw()
+        | vk::ShaderStageFlags::COMPUTE.as_raw(),
+);
 
 /// == `PParams` in planet.slang.
 #[repr(C)]
@@ -208,7 +212,11 @@ pub fn rgba8_mips(size: u32, base: &[u8], srgb: bool) -> Vec<Vec<u8>> {
                 for c in 0..4 {
                     let px = |a: usize, b: usize| prev[((2 * j + b) * s + 2 * i + a) * 4 + c];
                     let v = if srgb && c < 3 {
-                        let l = (to_lin[px(0, 0) as usize] + to_lin[px(1, 0) as usize] + to_lin[px(0, 1) as usize] + to_lin[px(1, 1) as usize]) * 0.25;
+                        let l = (to_lin[px(0, 0) as usize]
+                            + to_lin[px(1, 0) as usize]
+                            + to_lin[px(0, 1) as usize]
+                            + to_lin[px(1, 1) as usize])
+                            * 0.25;
                         (descent_srgb(l) * 255.0 + 0.5) as u8
                     } else {
                         ((px(0, 0) as u32 + px(1, 0) as u32 + px(0, 1) as u32 + px(1, 1) as u32 + 2) / 4) as u8
@@ -297,7 +305,11 @@ impl AshBackend {
 
     /// Create + fill one cube image per source (formats straight from the PLN1 / KTX2 header),
     /// then the descriptor set: `bindings[i]` -> binding i; the cloud noise is binding 5.
-    pub fn planet_upload_cubes(&mut self, srcs: &[CubeSrc<'_>], bindings: &[TexBinding]) -> Result<PlanetTextures, BackendError> {
+    pub fn planet_upload_cubes(
+        &mut self,
+        srcs: &[CubeSrc<'_>],
+        bindings: &[TexBinding],
+    ) -> Result<PlanetTextures, BackendError> {
         if srcs.iter().any(|s| s.meta().0.is_block()) && !self.ctx.texture_bc {
             return Err(BackendError::Unsupported("textureCompressionBC"));
         }
@@ -323,18 +335,39 @@ impl AshBackend {
                 .tiling(vk::ImageTiling::OPTIMAL)
                 .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST)
                 .initial_layout(vk::ImageLayout::UNDEFINED);
-            let range = vk::ImageSubresourceRange { aspect_mask: vk::ImageAspectFlags::COLOR, base_mip_level: 0, level_count: mips, base_array_layer: 0, layer_count: 6 };
+            let range = vk::ImageSubresourceRange {
+                aspect_mask: vk::ImageAspectFlags::COLOR,
+                base_mip_level: 0,
+                level_count: mips,
+                base_array_layer: 0,
+                layer_count: 6,
+            };
             let (image, alloc) = self.planet_image(&ici, "planet_cube")?;
-            let mut staging = GpuBuffer::new(&mut self.ctx, "planet_staging", len as u64, vk::BufferUsageFlags::TRANSFER_SRC, MemoryLocation::CpuToGpu)?;
+            let mut staging = GpuBuffer::new(
+                &mut self.ctx,
+                "planet_staging",
+                len as u64,
+                vk::BufferUsageFlags::TRANSFER_SRC,
+                MemoryLocation::CpuToGpu,
+            )?;
             let t0 = std::time::Instant::now();
             let mut regions = Vec::new();
             let region = |off: u64, mip: u32, layer: u32| vk::BufferImageCopy {
                 buffer_offset: off,
                 buffer_row_length: 0,
                 buffer_image_height: 0,
-                image_subresource: vk::ImageSubresourceLayers { aspect_mask: vk::ImageAspectFlags::COLOR, mip_level: mip, base_array_layer: layer, layer_count: 1 },
+                image_subresource: vk::ImageSubresourceLayers {
+                    aspect_mask: vk::ImageAspectFlags::COLOR,
+                    mip_level: mip,
+                    base_array_layer: layer,
+                    layer_count: 1,
+                },
                 image_offset: vk::Offset3D::default(),
-                image_extent: vk::Extent3D { width: (size >> mip).max(if format.is_block() { 4 } else { 1 }), height: (size >> mip).max(if format.is_block() { 4 } else { 1 }), depth: 1 },
+                image_extent: vk::Extent3D {
+                    width: (size >> mip).max(if format.is_block() { 4 } else { 1 }),
+                    height: (size >> mip).max(if format.is_block() { 4 } else { 1 }),
+                    depth: 1,
+                },
             };
             let fill: Result<(), BackendError> = match src {
                 CubeSrc::Pln(t) => {
@@ -366,7 +399,10 @@ impl AshBackend {
                         }
                         off += lb as u64;
                     }
-                    slices.into_par_iter().try_for_each(|(m, out)| k.level_into(m, out)).map_err(|_| BackendError::BadConfig("corrupt KTX2 level"))
+                    slices
+                        .into_par_iter()
+                        .try_for_each(|(m, out)| k.level_into(m, out))
+                        .map_err(|_| BackendError::BadConfig("corrupt KTX2 level"))
                 }
             };
             decode_ms += t0.elapsed().as_secs_f64() * 1e3;
@@ -385,9 +421,20 @@ impl AshBackend {
         let mut views = Vec::new();
         for b in bindings {
             let (format, _, mips, _) = srcs[b.image].meta();
-            let range = vk::ImageSubresourceRange { aspect_mask: vk::ImageAspectFlags::COLOR, base_mip_level: 0, level_count: mips, base_array_layer: 0, layer_count: 6 };
+            let range = vk::ImageSubresourceRange {
+                aspect_mask: vk::ImageAspectFlags::COLOR,
+                base_mip_level: 0,
+                level_count: mips,
+                base_array_layer: 0,
+                layer_count: 6,
+            };
             let comps = vk::ComponentMapping { r: b.swizzle[0], g: b.swizzle[1], b: b.swizzle[2], a: b.swizzle[3] };
-            let vci = vk::ImageViewCreateInfo::default().image(cubes[b.image].image).view_type(vk::ImageViewType::CUBE).format(vk_format(format)).components(comps).subresource_range(range);
+            let vci = vk::ImageViewCreateInfo::default()
+                .image(cubes[b.image].image)
+                .view_type(vk::ImageViewType::CUBE)
+                .format(vk_format(format))
+                .components(comps)
+                .subresource_range(range);
             // SAFETY: the image is bound; the view matches its format, layers and mips.
             views.push(unsafe { d.create_image_view(&vci, None)? });
         }
@@ -405,21 +452,42 @@ impl AshBackend {
             .initial_layout(vk::ImageLayout::UNDEFINED);
         let (nimg, nalloc) = self.planet_image(&ici, "planet_cloud_noise")?;
         let data = planet::cloudnoise::generate(n as usize);
-        let mut staging = GpuBuffer::new(&mut self.ctx, "planet_noise_staging", data.len() as u64, vk::BufferUsageFlags::TRANSFER_SRC, MemoryLocation::CpuToGpu)?;
+        let mut staging = GpuBuffer::new(
+            &mut self.ctx,
+            "planet_noise_staging",
+            data.len() as u64,
+            vk::BufferUsageFlags::TRANSFER_SRC,
+            MemoryLocation::CpuToGpu,
+        )?;
         staging.mapped_mut()[..data.len()].copy_from_slice(&data);
-        let nrange = vk::ImageSubresourceRange { aspect_mask: vk::ImageAspectFlags::COLOR, base_mip_level: 0, level_count: 1, base_array_layer: 0, layer_count: 1 };
+        let nrange = vk::ImageSubresourceRange {
+            aspect_mask: vk::ImageAspectFlags::COLOR,
+            base_mip_level: 0,
+            level_count: 1,
+            base_array_layer: 0,
+            layer_count: 1,
+        };
         let reg = [vk::BufferImageCopy {
             buffer_offset: 0,
             buffer_row_length: 0,
             buffer_image_height: 0,
-            image_subresource: vk::ImageSubresourceLayers { aspect_mask: vk::ImageAspectFlags::COLOR, mip_level: 0, base_array_layer: 0, layer_count: 1 },
+            image_subresource: vk::ImageSubresourceLayers {
+                aspect_mask: vk::ImageAspectFlags::COLOR,
+                mip_level: 0,
+                base_array_layer: 0,
+                layer_count: 1,
+            },
             image_offset: vk::Offset3D::default(),
             image_extent: vk::Extent3D { width: n, height: n, depth: n },
         }];
         let r = self.planet_copy(&staging, nimg, nrange, &reg);
         staging.destroy(&mut self.ctx);
         r?;
-        let vci = vk::ImageViewCreateInfo::default().image(nimg).view_type(vk::ImageViewType::TYPE_3D).format(vk::Format::R8G8B8A8_UNORM).subresource_range(nrange);
+        let vci = vk::ImageViewCreateInfo::default()
+            .image(nimg)
+            .view_type(vk::ImageViewType::TYPE_3D)
+            .format(vk::Format::R8G8B8A8_UNORM)
+            .subresource_range(nrange);
         // SAFETY: the noise image is bound and filled; the view matches it.
         let nview = unsafe { d.create_image_view(&vci, None)? };
         let noise = CubeImage { image: nimg, view: nview, alloc: Some(nalloc) };
@@ -446,40 +514,101 @@ impl AshBackend {
             .max_lod(0.0);
         // SAFETY: device valid; nsci initialised.
         let noise_sampler = unsafe { d.create_sampler(&nsci, None)? };
-        let dummy = |srgb: bool| -> ArrayMips { vec![vec![if srgb { vec![0, 0, 0, 255] } else { vec![128, 128, 255, 255] }]] };
+        let dummy =
+            |srgb: bool| -> ArrayMips { vec![vec![if srgb { vec![0, 0, 0, 255] } else { vec![128, 128, 255, 255] }]] };
         let g0 = self.planet_array_image(vk::Format::R8G8B8A8_SRGB, 1, &dummy(true))?;
         let g1 = self.planet_array_image(vk::Format::R8G8B8A8_UNORM, 1, &dummy(false))?;
         let binds: Vec<vk::DescriptorSetLayoutBinding> = (0..8)
-            .map(|b| vk::DescriptorSetLayoutBinding::default().binding(b).descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER).descriptor_count(1).stage_flags(vk::ShaderStageFlags::FRAGMENT))
+            .map(|b| {
+                vk::DescriptorSetLayoutBinding::default()
+                    .binding(b)
+                    .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                    .descriptor_count(1)
+                    .stage_flags(vk::ShaderStageFlags::FRAGMENT)
+            })
             .collect();
         // SAFETY: device valid; create infos reference live locals.
         let (set_layout, pool, set) = unsafe {
-            let sl = d.create_descriptor_set_layout(&vk::DescriptorSetLayoutCreateInfo::default().bindings(&binds), None)?;
+            let sl =
+                d.create_descriptor_set_layout(&vk::DescriptorSetLayoutCreateInfo::default().bindings(&binds), None)?;
             let ps = [vk::DescriptorPoolSize { ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER, descriptor_count: 8 }];
-            let pool = d.create_descriptor_pool(&vk::DescriptorPoolCreateInfo::default().max_sets(1).pool_sizes(&ps), None)?;
+            let pool =
+                d.create_descriptor_pool(&vk::DescriptorPoolCreateInfo::default().max_sets(1).pool_sizes(&ps), None)?;
             let sls = [sl];
-            let set = d.allocate_descriptor_sets(&vk::DescriptorSetAllocateInfo::default().descriptor_pool(pool).set_layouts(&sls))?[0];
-            let mut infos: Vec<[vk::DescriptorImageInfo; 1]> = views.iter().map(|&v| [vk::DescriptorImageInfo { sampler, image_view: v, image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL }]).collect();
-            infos.push([vk::DescriptorImageInfo { sampler: noise_sampler, image_view: nview, image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL }]);
+            let set = d.allocate_descriptor_sets(
+                &vk::DescriptorSetAllocateInfo::default().descriptor_pool(pool).set_layouts(&sls),
+            )?[0];
+            let mut infos: Vec<[vk::DescriptorImageInfo; 1]> = views
+                .iter()
+                .map(|&v| {
+                    [vk::DescriptorImageInfo {
+                        sampler,
+                        image_view: v,
+                        image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+                    }]
+                })
+                .collect();
+            infos.push([vk::DescriptorImageInfo {
+                sampler: noise_sampler,
+                image_view: nview,
+                image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+            }]);
             for g in [&g0, &g1] {
-                infos.push([vk::DescriptorImageInfo { sampler, image_view: g.view, image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL }]);
+                infos.push([vk::DescriptorImageInfo {
+                    sampler,
+                    image_view: g.view,
+                    image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+                }]);
             }
             let writes: Vec<vk::WriteDescriptorSet> = infos
                 .iter()
                 .enumerate()
-                .map(|(b, i)| vk::WriteDescriptorSet::default().dst_set(set).dst_binding(b as u32).descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER).image_info(i))
+                .map(|(b, i)| {
+                    vk::WriteDescriptorSet::default()
+                        .dst_set(set)
+                        .dst_binding(b as u32)
+                        .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                        .image_info(i)
+                })
                 .collect();
             d.update_descriptor_sets(&writes, &[]);
             (sl, pool, set)
         };
         let (ix, variants) = planet::patch::index_variants();
-        let mut index = GpuBuffer::new(&mut self.ctx, "planet_indices", (ix.len() * 4) as u64, vk::BufferUsageFlags::INDEX_BUFFER, MemoryLocation::CpuToGpu)?;
+        let mut index = GpuBuffer::new(
+            &mut self.ctx,
+            "planet_indices",
+            (ix.len() * 4) as u64,
+            vk::BufferUsageFlags::INDEX_BUFFER,
+            MemoryLocation::CpuToGpu,
+        )?;
         index.mapped_mut()[..ix.len() * 4].copy_from_slice(bytemuck::cast_slice(&ix));
-        Ok(PlanetTextures { cubes, views, noise, sampler, noise_sampler, set_layout, pool, set, bytes, images, decode_ms, index, variants, graft: [g0, g1], graft_bytes: 0 })
+        Ok(PlanetTextures {
+            cubes,
+            views,
+            noise,
+            sampler,
+            noise_sampler,
+            set_layout,
+            pool,
+            set,
+            bytes,
+            images,
+            decode_ms,
+            index,
+            variants,
+            graft: [g0, g1],
+            graft_bytes: 0,
+        })
     }
 
     /// RGBA8 2D array (layers x mips as given), SHADER_READ_ONLY, with a 2D-array view.
-    fn planet_array_image(&mut self, fmt: vk::Format, size: u32, layers: &ArrayMips) -> Result<CubeImage, BackendError> {
+    fn planet_array_image(
+        &mut self,
+        fmt: vk::Format,
+        size: u32,
+        layers: &ArrayMips,
+    ) -> Result<CubeImage, BackendError> {
         let mips = layers[0].len() as u32;
         let nl = layers.len() as u32;
         let ici = vk::ImageCreateInfo::default()
@@ -494,7 +623,13 @@ impl AshBackend {
             .initial_layout(vk::ImageLayout::UNDEFINED);
         let (image, alloc) = self.planet_image(&ici, "planet_graft")?;
         let len: usize = layers.iter().flatten().map(|m| m.len()).sum();
-        let mut staging = GpuBuffer::new(&mut self.ctx, "planet_graft_staging", len as u64, vk::BufferUsageFlags::TRANSFER_SRC, MemoryLocation::CpuToGpu)?;
+        let mut staging = GpuBuffer::new(
+            &mut self.ctx,
+            "planet_graft_staging",
+            len as u64,
+            vk::BufferUsageFlags::TRANSFER_SRC,
+            MemoryLocation::CpuToGpu,
+        )?;
         let mut regions = Vec::new();
         let mut off = 0usize;
         for (l, chain) in layers.iter().enumerate() {
@@ -505,14 +640,25 @@ impl AshBackend {
                     buffer_offset: off as u64,
                     buffer_row_length: 0,
                     buffer_image_height: 0,
-                    image_subresource: vk::ImageSubresourceLayers { aspect_mask: vk::ImageAspectFlags::COLOR, mip_level: m as u32, base_array_layer: l as u32, layer_count: 1 },
+                    image_subresource: vk::ImageSubresourceLayers {
+                        aspect_mask: vk::ImageAspectFlags::COLOR,
+                        mip_level: m as u32,
+                        base_array_layer: l as u32,
+                        layer_count: 1,
+                    },
                     image_offset: vk::Offset3D::default(),
                     image_extent: vk::Extent3D { width: e, height: e, depth: 1 },
                 });
                 off += data.len();
             }
         }
-        let range = vk::ImageSubresourceRange { aspect_mask: vk::ImageAspectFlags::COLOR, base_mip_level: 0, level_count: mips, base_array_layer: 0, layer_count: nl };
+        let range = vk::ImageSubresourceRange {
+            aspect_mask: vk::ImageAspectFlags::COLOR,
+            base_mip_level: 0,
+            level_count: mips,
+            base_array_layer: 0,
+            layer_count: nl,
+        };
         let r = self.planet_copy(&staging, image, range, &regions);
         staging.destroy(&mut self.ctx);
         if let Err(e) = r {
@@ -521,7 +667,11 @@ impl AshBackend {
             let _ = self.ctx.allocator.free(alloc);
             return Err(e);
         }
-        let vci = vk::ImageViewCreateInfo::default().image(image).view_type(vk::ImageViewType::TYPE_2D_ARRAY).format(fmt).subresource_range(range);
+        let vci = vk::ImageViewCreateInfo::default()
+            .image(image)
+            .view_type(vk::ImageViewType::TYPE_2D_ARRAY)
+            .format(fmt)
+            .subresource_range(range);
         // SAFETY: the image is bound and filled; the view matches its format, layers and mips.
         let view = unsafe { self.ctx.device.create_image_view(&vci, None)? };
         Ok(CubeImage { image, view, alloc: Some(alloc) })
@@ -529,13 +679,25 @@ impl AshBackend {
 
     /// Replace the shared-Alps graft arrays (bindings 6 / 7): `albedo` / `aux` = per layer
     /// (outer, inner) the RGBA8 mip chain of a `size`^2 level (see [`rgba8_mips`]).
-    pub fn planet_set_graft(&mut self, t: &mut PlanetTextures, size: u32, albedo: &ArrayMips, aux: &ArrayMips) -> Result<(), BackendError> {
+    pub fn planet_set_graft(
+        &mut self,
+        t: &mut PlanetTextures,
+        size: u32,
+        albedo: &ArrayMips,
+        aux: &ArrayMips,
+    ) -> Result<(), BackendError> {
         self.planet_set_graft_fmt(t, size, (TexFormat::Rgba8Srgb, albedo), (TexFormat::Rgba8, aux))
     }
 
     /// [`Self::planet_set_graft`] with explicit formats (Earth round 5: BC7 sRGB albedo + BC7
     /// aux from KTX2; mip data as stored, BC blocks for the block formats).
-    pub fn planet_set_graft_fmt(&mut self, t: &mut PlanetTextures, size: u32, albedo: (TexFormat, &ArrayMips), aux: (TexFormat, &ArrayMips)) -> Result<(), BackendError> {
+    pub fn planet_set_graft_fmt(
+        &mut self,
+        t: &mut PlanetTextures,
+        size: u32,
+        albedo: (TexFormat, &ArrayMips),
+        aux: (TexFormat, &ArrayMips),
+    ) -> Result<(), BackendError> {
         if (albedo.0.is_block() || aux.0.is_block()) && !self.ctx.texture_bc {
             return Err(BackendError::Unsupported("textureCompressionBC"));
         }
@@ -546,8 +708,29 @@ impl AshBackend {
         let b = self.planet_array_image(vk_format(aux.0), size, aux.1)?;
         self.ctx.wait_idle();
         let d = self.ctx.device.clone();
-        let infos = [[vk::DescriptorImageInfo { sampler: t.sampler, image_view: a.view, image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL }], [vk::DescriptorImageInfo { sampler: t.sampler, image_view: b.view, image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL }]];
-        let writes: Vec<vk::WriteDescriptorSet> = infos.iter().enumerate().map(|(k, i)| vk::WriteDescriptorSet::default().dst_set(t.set).dst_binding(6 + k as u32).descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER).image_info(i)).collect();
+        let infos = [
+            [vk::DescriptorImageInfo {
+                sampler: t.sampler,
+                image_view: a.view,
+                image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+            }],
+            [vk::DescriptorImageInfo {
+                sampler: t.sampler,
+                image_view: b.view,
+                image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+            }],
+        ];
+        let writes: Vec<vk::WriteDescriptorSet> = infos
+            .iter()
+            .enumerate()
+            .map(|(k, i)| {
+                vk::WriteDescriptorSet::default()
+                    .dst_set(t.set)
+                    .dst_binding(6 + k as u32)
+                    .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                    .image_info(i)
+            })
+            .collect();
         // SAFETY: GPU idle (no frame uses the set); the views are live.
         unsafe { d.update_descriptor_sets(&writes, &[]) };
         let old = std::mem::replace(&mut t.graft, [a, b]);
@@ -565,13 +748,23 @@ impl AshBackend {
         Ok(())
     }
 
-    pub(crate) fn planet_image(&mut self, ici: &vk::ImageCreateInfo, name: &str) -> Result<(vk::Image, Allocation), BackendError> {
+    pub(crate) fn planet_image(
+        &mut self,
+        ici: &vk::ImageCreateInfo,
+        name: &str,
+    ) -> Result<(vk::Image, Allocation), BackendError> {
         let d = &self.ctx.device;
         // SAFETY: device valid; ici fully initialised; BC formats only when enabled (checked by the caller).
         let image = unsafe { d.create_image(ici, None)? };
         // SAFETY: image was just created from this device.
         let req = unsafe { d.get_image_memory_requirements(image) };
-        let alloc = match self.ctx.allocator.allocate(&AllocationCreateDesc { name, requirements: req, location: MemoryLocation::GpuOnly, linear: false, allocation_scheme: AllocationScheme::GpuAllocatorManaged }) {
+        let alloc = match self.ctx.allocator.allocate(&AllocationCreateDesc {
+            name,
+            requirements: req,
+            location: MemoryLocation::GpuOnly,
+            linear: false,
+            allocation_scheme: AllocationScheme::GpuAllocatorManaged,
+        }) {
             Ok(a) => a,
             Err(e) => {
                 // SAFETY: unbound, unused image.
@@ -585,7 +778,13 @@ impl AshBackend {
     }
 
     /// staging -> image (all regions), leaving it SHADER_READ_ONLY.
-    pub(crate) fn planet_copy(&mut self, staging: &GpuBuffer, image: vk::Image, range: vk::ImageSubresourceRange, regions: &[vk::BufferImageCopy]) -> Result<(), BackendError> {
+    pub(crate) fn planet_copy(
+        &mut self,
+        staging: &GpuBuffer,
+        image: vk::Image,
+        range: vk::ImageSubresourceRange,
+        regions: &[vk::BufferImageCopy],
+    ) -> Result<(), BackendError> {
         let d = self.ctx.device.clone();
         let buf = staging.buffer;
         self.ctx.immediate_submit(|cmd| {
@@ -606,10 +805,20 @@ impl AshBackend {
                 // SAFETY: cmd recording; image live with all mips/layers in `range`.
                 unsafe { d.cmd_pipeline_barrier2(cmd, &vk::DependencyInfo::default().image_memory_barriers(&b)) };
             };
-            barrier(vk::ImageLayout::UNDEFINED, vk::ImageLayout::TRANSFER_DST_OPTIMAL, (S::NONE, A::NONE), (S::COPY, A::TRANSFER_WRITE));
+            barrier(
+                vk::ImageLayout::UNDEFINED,
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                (S::NONE, A::NONE),
+                (S::COPY, A::TRANSFER_WRITE),
+            );
             // SAFETY: staging holds the bytes laid out as `regions`; image in TRANSFER_DST.
             unsafe { d.cmd_copy_buffer_to_image(cmd, buf, image, vk::ImageLayout::TRANSFER_DST_OPTIMAL, regions) };
-            barrier(vk::ImageLayout::TRANSFER_DST_OPTIMAL, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL, (S::COPY, A::TRANSFER_WRITE), (S::FRAGMENT_SHADER, A::SHADER_SAMPLED_READ));
+            barrier(
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+                (S::COPY, A::TRANSFER_WRITE),
+                (S::FRAGMENT_SHADER, A::SHADER_SAMPLED_READ),
+            );
         })
     }
 
@@ -653,18 +862,23 @@ impl AshBackend {
     }
 
     /// Render one planet frame offscreen; returns linear HDR RGBA f32 (row-major) + timings.
-    pub fn render_planet(&mut self, tex: &PlanetTextures, f: &PlanetFrame<'_>) -> Result<(Vec<[f32; 4]>, PlanetTimings), BackendError> {
+    pub fn render_planet(
+        &mut self,
+        tex: &PlanetTextures,
+        f: &PlanetFrame<'_>,
+    ) -> Result<(Vec<[f32; 4]>, PlanetTimings), BackendError> {
         if f.patches.len() != f.masks.len() || f.vertices.len() != f.patches.len() * VERTS as usize {
             return Err(BackendError::BadConfig("planet frame: patches / masks / vertices mismatch"));
         }
         self.ctx.wait_idle();
         let d = self.ctx.device.clone();
         let sda = vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS | vk::BufferUsageFlags::STORAGE_BUFFER;
-        let up = |ctx: &mut crate::context::VkContext, name: &str, b: &[u8], usage| -> Result<GpuBuffer, BackendError> {
-            let mut g = GpuBuffer::new(ctx, name, b.len().max(16) as u64, usage, MemoryLocation::CpuToGpu)?;
-            g.mapped_mut()[..b.len()].copy_from_slice(b);
-            Ok(g)
-        };
+        let up =
+            |ctx: &mut crate::context::VkContext, name: &str, b: &[u8], usage| -> Result<GpuBuffer, BackendError> {
+                let mut g = GpuBuffer::new(ctx, name, b.len().max(16) as u64, usage, MemoryLocation::CpuToGpu)?;
+                g.mapped_mut()[..b.len()].copy_from_slice(b);
+                Ok(g)
+            };
         let pb = up(&mut self.ctx, "planet_params", bytemuck::bytes_of(&f.params), sda)?;
         let vb = up(&mut self.ctx, "planet_vertices", bytemuck::cast_slice(f.vertices), sda)?;
         let patch_b = up(&mut self.ctx, "planet_patches", bytemuck::cast_slice(f.patches), sda)?;
@@ -673,26 +887,67 @@ impl AshBackend {
         for (k, &m) in f.masks.iter().enumerate() {
             let (first, count) = tex.variants[m as usize & 15];
             tris += count as u64 / 3;
-            cmds.push(vk::DrawIndexedIndirectCommand { index_count: count, instance_count: 1, first_index: first, vertex_offset: (k as u32 * VERTS) as i32, first_instance: 0 });
+            cmds.push(vk::DrawIndexedIndirectCommand {
+                index_count: count,
+                instance_count: 1,
+                first_index: first,
+                vertex_offset: (k as u32 * VERTS) as i32,
+                first_instance: 0,
+            });
         }
         // SAFETY: DrawIndexedIndirectCommand is 5 plain u32/i32 fields (repr C, no padding).
-        let cmd_bytes = unsafe { std::slice::from_raw_parts(cmds.as_ptr() as *const u8, cmds.len() * size_of::<vk::DrawIndexedIndirectCommand>()) };
+        let cmd_bytes = unsafe {
+            std::slice::from_raw_parts(
+                cmds.as_ptr() as *const u8,
+                cmds.len() * size_of::<vk::DrawIndexedIndirectCommand>(),
+            )
+        };
         let ind = up(&mut self.ctx, "planet_indirect", cmd_bytes, vk::BufferUsageFlags::INDIRECT_BUFFER)?;
         let atmo = GpuBuffer::new(&mut self.ctx, "planet_luts", LUT_FLOAT4S * 16, sda, MemoryLocation::GpuOnly)?;
         let ext = vk::Extent2D { width: f.width, height: f.height };
-        let mut color = GpuImage::new(&mut self.ctx, "planet_color", ext, COLOR, vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::TRANSFER_SRC, vk::ImageAspectFlags::COLOR)?;
-        let mut depth = GpuImage::new(&mut self.ctx, "planet_depth", ext, DEPTH, vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT, vk::ImageAspectFlags::DEPTH)?;
+        let mut color = GpuImage::new(
+            &mut self.ctx,
+            "planet_color",
+            ext,
+            COLOR,
+            vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::TRANSFER_SRC,
+            vk::ImageAspectFlags::COLOR,
+        )?;
+        let mut depth = GpuImage::new(
+            &mut self.ctx,
+            "planet_depth",
+            ext,
+            DEPTH,
+            vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
+            vk::ImageAspectFlags::DEPTH,
+        )?;
         let rb_bytes = f.width as u64 * f.height as u64 * 8;
-        let rb = GpuBuffer::new(&mut self.ctx, "planet_readback", rb_bytes, vk::BufferUsageFlags::TRANSFER_DST, MemoryLocation::GpuToCpu)?;
+        let rb = GpuBuffer::new(
+            &mut self.ctx,
+            "planet_readback",
+            rb_bytes,
+            vk::BufferUsageFlags::TRANSFER_DST,
+            MemoryLocation::GpuToCpu,
+        )?;
         let range = [vk::PushConstantRange { stage_flags: STAGES, offset: 0, size: size_of::<PushGpu>() as u32 }];
         let sls = [tex.set_layout];
         // SAFETY: device valid; create info references live locals.
-        let layout = unsafe { d.create_pipeline_layout(&vk::PipelineLayoutCreateInfo::default().set_layouts(&sls).push_constant_ranges(&range), None)? };
+        let layout = unsafe {
+            d.create_pipeline_layout(
+                &vk::PipelineLayoutCreateInfo::default().set_layouts(&sls).push_constant_ranges(&range),
+                None,
+            )?
+        };
         let surf = graphics(&d, layout, PLANET_VS, PLANET_FS, true)?;
         let sky = graphics(&d, layout, SKY_VS, SKY_FS, false)?;
         let luts: Vec<vk::Pipeline> = LUT_CS.iter().map(|s| compute(&d, layout, s)).collect::<Result<_, _>>()?;
         // SAFETY: device valid.
-        let qp = unsafe { d.create_query_pool(&vk::QueryPoolCreateInfo::default().query_type(vk::QueryType::TIMESTAMP).query_count(8), None)? };
+        let qp = unsafe {
+            d.create_query_pool(
+                &vk::QueryPoolCreateInfo::default().query_type(vk::QueryType::TIMESTAMP).query_count(8),
+                None,
+            )?
+        };
         let pc = PushGpu { p: pb.address, v: vb.address, patches: patch_b.address, atmo: atmo.address };
         let labels = ["atmosphere luts", "surface patches", "sky + limb", "readback copy"];
         let r = self.ctx.immediate_submit(|cmd| {
@@ -706,11 +961,23 @@ impl AshBackend {
                 for (k, (&pipe, &(gx, gy))) in luts.iter().zip(LUT_GROUPS.iter()).enumerate() {
                     d.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::COMPUTE, pipe);
                     d.cmd_dispatch(cmd, gx, gy, 1);
-                    let dst = if k + 1 < luts.len() { (S::COMPUTE_SHADER, A::SHADER_STORAGE_READ | A::SHADER_STORAGE_WRITE) } else { (S::VERTEX_SHADER | S::FRAGMENT_SHADER, A::SHADER_STORAGE_READ) };
+                    let dst = if k + 1 < luts.len() {
+                        (S::COMPUTE_SHADER, A::SHADER_STORAGE_READ | A::SHADER_STORAGE_WRITE)
+                    } else {
+                        (S::VERTEX_SHADER | S::FRAGMENT_SHADER, A::SHADER_STORAGE_READ)
+                    };
                     memory_barrier(&d, cmd, (S::COMPUTE_SHADER, A::SHADER_STORAGE_WRITE), dst);
                 }
                 d.cmd_write_timestamp2(cmd, S::ALL_COMMANDS, qp, 1);
-                image_barrier(&d, cmd, color.image, vk::ImageAspectFlags::COLOR, (vk::ImageLayout::UNDEFINED, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL), (S::NONE, A::NONE), (S::COLOR_ATTACHMENT_OUTPUT, A::COLOR_ATTACHMENT_WRITE));
+                image_barrier(
+                    &d,
+                    cmd,
+                    color.image,
+                    vk::ImageAspectFlags::COLOR,
+                    (vk::ImageLayout::UNDEFINED, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL),
+                    (S::NONE, A::NONE),
+                    (S::COLOR_ATTACHMENT_OUTPUT, A::COLOR_ATTACHMENT_WRITE),
+                );
                 image_barrier(
                     &d,
                     cmd,
@@ -718,7 +985,10 @@ impl AshBackend {
                     vk::ImageAspectFlags::DEPTH,
                     (vk::ImageLayout::UNDEFINED, vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL),
                     (S::NONE, A::NONE),
-                    (S::EARLY_FRAGMENT_TESTS | S::LATE_FRAGMENT_TESTS, A::DEPTH_STENCIL_ATTACHMENT_WRITE | A::DEPTH_STENCIL_ATTACHMENT_READ),
+                    (
+                        S::EARLY_FRAGMENT_TESTS | S::LATE_FRAGMENT_TESTS,
+                        A::DEPTH_STENCIL_ATTACHMENT_WRITE | A::DEPTH_STENCIL_ATTACHMENT_READ,
+                    ),
                 );
                 let catt = [vk::RenderingAttachmentInfo::default()
                     .image_view(color.view)
@@ -731,29 +1001,65 @@ impl AshBackend {
                     .image_layout(vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL)
                     .load_op(vk::AttachmentLoadOp::CLEAR)
                     .store_op(vk::AttachmentStoreOp::DONT_CARE)
-                    .clear_value(vk::ClearValue { depth_stencil: vk::ClearDepthStencilValue { depth: 0.0, stencil: 0 } });
-                let ri = vk::RenderingInfo::default().render_area(vk::Rect2D { offset: vk::Offset2D::default(), extent: ext }).layer_count(1).color_attachments(&catt).depth_attachment(&datt);
+                    .clear_value(vk::ClearValue {
+                        depth_stencil: vk::ClearDepthStencilValue { depth: 0.0, stencil: 0 },
+                    });
+                let ri = vk::RenderingInfo::default()
+                    .render_area(vk::Rect2D { offset: vk::Offset2D::default(), extent: ext })
+                    .layer_count(1)
+                    .color_attachments(&catt)
+                    .depth_attachment(&datt);
                 d.cmd_begin_rendering(cmd, &ri);
-                d.cmd_set_viewport(cmd, 0, &[vk::Viewport { x: 0.0, y: 0.0, width: ext.width as f32, height: ext.height as f32, min_depth: 0.0, max_depth: 1.0 }]);
+                d.cmd_set_viewport(
+                    cmd,
+                    0,
+                    &[vk::Viewport {
+                        x: 0.0,
+                        y: 0.0,
+                        width: ext.width as f32,
+                        height: ext.height as f32,
+                        min_depth: 0.0,
+                        max_depth: 1.0,
+                    }],
+                );
                 d.cmd_set_scissor(cmd, 0, &[vk::Rect2D { offset: vk::Offset2D::default(), extent: ext }]);
                 d.cmd_bind_descriptor_sets(cmd, vk::PipelineBindPoint::GRAPHICS, layout, 0, &[tex.set], &[]);
                 d.cmd_push_constants(cmd, layout, STAGES, 0, bytemuck::bytes_of(&pc));
                 if !cmds.is_empty() {
                     d.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, surf);
                     d.cmd_bind_index_buffer(cmd, tex.index.buffer, 0, vk::IndexType::UINT32);
-                    d.cmd_draw_indexed_indirect(cmd, ind.buffer, 0, cmds.len() as u32, size_of::<vk::DrawIndexedIndirectCommand>() as u32);
+                    d.cmd_draw_indexed_indirect(
+                        cmd,
+                        ind.buffer,
+                        0,
+                        cmds.len() as u32,
+                        size_of::<vk::DrawIndexedIndirectCommand>() as u32,
+                    );
                 }
                 d.cmd_write_timestamp2(cmd, S::ALL_COMMANDS, qp, 2);
                 d.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, sky);
                 d.cmd_draw(cmd, 3, 1, 0, 0);
                 d.cmd_end_rendering(cmd);
                 d.cmd_write_timestamp2(cmd, S::ALL_COMMANDS, qp, 3);
-                image_barrier(&d, cmd, color.image, vk::ImageAspectFlags::COLOR, (vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL, vk::ImageLayout::TRANSFER_SRC_OPTIMAL), (S::COLOR_ATTACHMENT_OUTPUT, A::COLOR_ATTACHMENT_WRITE), (S::COPY, A::TRANSFER_READ));
+                image_barrier(
+                    &d,
+                    cmd,
+                    color.image,
+                    vk::ImageAspectFlags::COLOR,
+                    (vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL, vk::ImageLayout::TRANSFER_SRC_OPTIMAL),
+                    (S::COLOR_ATTACHMENT_OUTPUT, A::COLOR_ATTACHMENT_WRITE),
+                    (S::COPY, A::TRANSFER_READ),
+                );
                 let region = [vk::BufferImageCopy {
                     buffer_offset: 0,
                     buffer_row_length: 0,
                     buffer_image_height: 0,
-                    image_subresource: vk::ImageSubresourceLayers { aspect_mask: vk::ImageAspectFlags::COLOR, mip_level: 0, base_array_layer: 0, layer_count: 1 },
+                    image_subresource: vk::ImageSubresourceLayers {
+                        aspect_mask: vk::ImageAspectFlags::COLOR,
+                        mip_level: 0,
+                        base_array_layer: 0,
+                        layer_count: 1,
+                    },
                     image_offset: vk::Offset3D::default(),
                     image_extent: vk::Extent3D { width: f.width, height: f.height, depth: 1 },
                 }];
@@ -768,7 +1074,11 @@ impl AshBackend {
         {
             let mut ts = [0u64; 5];
             // SAFETY: queries 0..5 were written by the completed submit.
-            if unsafe { d.get_query_pool_results(qp, 0, &mut ts, vk::QueryResultFlags::TYPE_64 | vk::QueryResultFlags::WAIT) }.is_ok() {
+            if unsafe {
+                d.get_query_pool_results(qp, 0, &mut ts, vk::QueryResultFlags::TYPE_64 | vk::QueryResultFlags::WAIT)
+            }
+            .is_ok()
+            {
                 let ms = |a: u64, b: u64| b.saturating_sub(a) as f64 * period as f64 * 1e-6;
                 t.gpu_ms = ms(ts[0], ts[4]);
                 t.breakdown = labels.iter().enumerate().map(|(k, &l)| (l, ms(ts[k], ts[k + 1]))).collect();
@@ -800,32 +1110,51 @@ impl AshBackend {
     }
 }
 
-fn graphics(d: &ash::Device, layout: vk::PipelineLayout, vs: &[u8], fs: &[u8], surface: bool) -> Result<vk::Pipeline, BackendError> {
+fn graphics(
+    d: &ash::Device,
+    layout: vk::PipelineLayout,
+    vs: &[u8],
+    fs: &[u8],
+    surface: bool,
+) -> Result<vk::Pipeline, BackendError> {
     // SAFETY: device valid; create infos reference live locals; modules destroyed after creation.
     unsafe {
         let vsm = crate::pass::shader_module(d, vs)?;
         let fsm = crate::pass::shader_module(d, fs)?;
         let stages = [
             vk::PipelineShaderStageCreateInfo::default().stage(vk::ShaderStageFlags::VERTEX).module(vsm).name(c"main"),
-            vk::PipelineShaderStageCreateInfo::default().stage(vk::ShaderStageFlags::FRAGMENT).module(fsm).name(c"main"),
+            vk::PipelineShaderStageCreateInfo::default()
+                .stage(vk::ShaderStageFlags::FRAGMENT)
+                .module(fsm)
+                .name(c"main"),
         ];
         let vi = vk::PipelineVertexInputStateCreateInfo::default();
         let ia = vk::PipelineInputAssemblyStateCreateInfo::default().topology(vk::PrimitiveTopology::TRIANGLE_LIST);
         let vp = vk::PipelineViewportStateCreateInfo::default().viewport_count(1).scissor_count(1);
         // skirts are single-sided walls: no culling (far-side patches are horizon-culled on the CPU)
-        let rs = vk::PipelineRasterizationStateCreateInfo::default().polygon_mode(vk::PolygonMode::FILL).cull_mode(vk::CullModeFlags::NONE).line_width(1.0);
+        let rs = vk::PipelineRasterizationStateCreateInfo::default()
+            .polygon_mode(vk::PolygonMode::FILL)
+            .cull_mode(vk::CullModeFlags::NONE)
+            .line_width(1.0);
         let ms = vk::PipelineMultisampleStateCreateInfo::default().rasterization_samples(vk::SampleCountFlags::TYPE_1);
         let ds = if surface {
-            vk::PipelineDepthStencilStateCreateInfo::default().depth_test_enable(true).depth_write_enable(true).depth_compare_op(vk::CompareOp::GREATER)
+            vk::PipelineDepthStencilStateCreateInfo::default()
+                .depth_test_enable(true)
+                .depth_write_enable(true)
+                .depth_compare_op(vk::CompareOp::GREATER)
         } else {
-            vk::PipelineDepthStencilStateCreateInfo::default().depth_test_enable(true).depth_write_enable(false).depth_compare_op(vk::CompareOp::GREATER_OR_EQUAL)
+            vk::PipelineDepthStencilStateCreateInfo::default()
+                .depth_test_enable(true)
+                .depth_write_enable(false)
+                .depth_compare_op(vk::CompareOp::GREATER_OR_EQUAL)
         };
         let blend = [vk::PipelineColorBlendAttachmentState::default().color_write_mask(vk::ColorComponentFlags::RGBA)];
         let cb = vk::PipelineColorBlendStateCreateInfo::default().attachments(&blend);
         let dyns = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
         let dy = vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dyns);
         let cf = [COLOR];
-        let mut rendering = vk::PipelineRenderingCreateInfo::default().color_attachment_formats(&cf).depth_attachment_format(DEPTH);
+        let mut rendering =
+            vk::PipelineRenderingCreateInfo::default().color_attachment_formats(&cf).depth_attachment_format(DEPTH);
         let gci = vk::GraphicsPipelineCreateInfo::default()
             .stages(&stages)
             .vertex_input_state(&vi)
@@ -849,7 +1178,14 @@ fn compute(d: &ash::Device, layout: vk::PipelineLayout, spv: &[u8]) -> Result<vk
     // SAFETY: device valid; the module is destroyed after pipeline creation.
     unsafe {
         let m = crate::pass::shader_module(d, spv)?;
-        let ci = vk::ComputePipelineCreateInfo::default().stage(vk::PipelineShaderStageCreateInfo::default().stage(vk::ShaderStageFlags::COMPUTE).module(m).name(c"main")).layout(layout);
+        let ci = vk::ComputePipelineCreateInfo::default()
+            .stage(
+                vk::PipelineShaderStageCreateInfo::default()
+                    .stage(vk::ShaderStageFlags::COMPUTE)
+                    .module(m)
+                    .name(c"main"),
+            )
+            .layout(layout);
         let r = d.create_compute_pipelines(vk::PipelineCache::null(), &[ci], None).map_err(|(_, e)| e);
         d.destroy_shader_module(m, None);
         Ok(r?[0])
@@ -885,7 +1221,33 @@ mod layout_tests {
             .collect();
         assert_eq!(
             names,
-            ["view_proj", "cam_km", "sun", "right", "up", "fwd", "planet", "ocean", "light", "atmo", "view", "cloud", "cloud2", "aero", "hole", "meso", "thaw", "graft", "graft_e", "graft_n", "graft_l", "meso2", "graft_t", "haze", "cloud3"]
+            [
+                "view_proj",
+                "cam_km",
+                "sun",
+                "right",
+                "up",
+                "fwd",
+                "planet",
+                "ocean",
+                "light",
+                "atmo",
+                "view",
+                "cloud",
+                "cloud2",
+                "aero",
+                "hole",
+                "meso",
+                "thaw",
+                "graft",
+                "graft_e",
+                "graft_n",
+                "graft_l",
+                "meso2",
+                "graft_t",
+                "haze",
+                "cloud3"
+            ]
         );
     }
 }

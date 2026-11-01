@@ -83,7 +83,8 @@ fn tq_unrotated(vals: &[i32], bits: u32) -> Vec<i32> {
         let mean = blk.iter().map(|&x| x as f64).sum::<f64>() / blk.len() as f64;
         let r: Vec<f64> = blk.iter().map(|&x| x as f64 - mean).collect();
         let norm = r.iter().map(|x| x * x).sum::<f64>().sqrt().max(1e-12);
-        let q: Vec<f64> = r.iter().map(|x| c[bnd.partition_point(|&t| t < x / norm * (D as f64).sqrt())] as f64).collect();
+        let q: Vec<f64> =
+            r.iter().map(|x| c[bnd.partition_point(|&t| t < x / norm * (D as f64).sqrt())] as f64).collect();
         let (num, den) = r.iter().zip(&q).fold((0.0, 0.0), |(n, d), (x, y)| (n + x * y, d + y * y));
         let a = if den > 0.0 { num / den } else { 0.0 };
         for (j, y) in q.iter().enumerate() {
@@ -133,8 +134,13 @@ fn main() {
     let layout = ShellLayout::camera_centred(&grid, [l(cx), l(gy), l(cz)], &[3, 3, 3]);
     let outer = *layout.boxes.last().unwrap();
     let coarse = 32 << layout.max_lod();
-    let al = |v: i64, up: bool| if up { (v + coarse - 1).div_euclid(coarse) * coarse } else { v.div_euclid(coarse) * coarse };
-    let region = ([al(outer.lo[0], false), al(l(gy) - 300, false), al(outer.lo[2], false)], [al(outer.hi[0], true), al(l(gy) + 700, true), al(outer.hi[2], true)]);
+    let al = |v: i64, up: bool| {
+        if up { (v + coarse - 1).div_euclid(coarse) * coarse } else { v.div_euclid(coarse) * coarse }
+    };
+    let region = (
+        [al(outer.lo[0], false), al(l(gy) - 300, false), al(outer.lo[2], false)],
+        [al(outer.hi[0], true), al(l(gy) + 700, true), al(outer.hi[2], true)],
+    );
     let world = build_world_filtered(&field, &cfg, &layout, region, layout.max_lod()).unwrap();
     let coords: Vec<BrickCoord> = world.bricks.keys().copied().collect();
     let mut both: Vec<(BrickSamples, u8, Option<voxel::Aabb>)> = coords
@@ -149,17 +155,31 @@ fn main() {
     let smp: Vec<BrickSamples> = both.into_iter().map(|b| b.0).collect();
     let ns: usize = smp.iter().map(|s| s.d.len()).sum();
     // corner samples only (TQ covers `d`; transition faces stay lossless either way)
-    let corners: Vec<BrickSamples> = smp.iter().map(|s| BrickSamples { coord: s.coord, n: s.n, d: s.d.clone(), faces: Default::default() }).collect();
+    let corners: Vec<BrickSamples> = smp
+        .iter()
+        .map(|s| BrickSamples { coord: s.coord, n: s.n, d: s.d.clone(), faces: Default::default() })
+        .collect();
     let lossless = samples_file_bytes(&corners);
     let empty = samples_file_bytes(&[]);
     let dmin = smp.iter().flat_map(|s| s.d.iter()).min().unwrap();
     let dmax = smp.iter().flat_map(|s| s.d.iter()).max().unwrap();
-    println!("bricks {} (meshed), corner samples {} ({:.2} MB as i32), value range [{dmin}, {dmax}]", smp.len(), ns, ns as f64 * 4e-6);
-    println!("lossless Lorenzo+rANS (current): {:.3} MB, {:.3} bits/sample", (lossless - empty) as f64 / 1e6, (lossless - empty) as f64 * 8.0 / ns as f64);
+    println!(
+        "bricks {} (meshed), corner samples {} ({:.2} MB as i32), value range [{dmin}, {dmax}]",
+        smp.len(),
+        ns,
+        ns as f64 * 4e-6
+    );
+    println!(
+        "lossless Lorenzo+rANS (current): {:.3} MB, {:.3} bits/sample",
+        (lossless - empty) as f64 / 1e6,
+        (lossless - empty) as f64 * 8.0 / ns as f64
+    );
     let cm_per_vox = |c: BrickCoord| grid.voxel_m() * grid.step(c.lod) as f64 * 100.0;
 
     let rot = Rotation::new();
-    println!("\nmode | bits/sample | MB | RMSE (density units) | rel. MSE (vs block var) | edge-crossing shift mean / p99 / max (cm) | topology changes per 1k crossings");
+    println!(
+        "\nmode | bits/sample | MB | RMSE (density units) | rel. MSE (vs block var) | edge-crossing shift mean / p99 / max (cm) | topology changes per 1k crossings"
+    );
     let report = |label: &str, bytes: f64, decs: &[Vec<i32>]| {
         let (mut se, mut sv) = (0.0f64, 0.0f64);
         let (mut sum_cm, mut cnt, mut mx_cm, mut topo) = (0.0, 0usize, 0.0f64, 0usize);
@@ -200,8 +220,10 @@ fn main() {
         let (te, blobs) = best_of(3, || smp.iter().map(|s| tq::encode(s, bits, &rot)).collect::<Vec<_>>());
         let (tep, _) = best_of(3, || smp.par_iter().map(|s| tq::encode(s, bits, &rot)).collect::<Vec<_>>());
         let (tv, _) = best_of(5, || blobs.iter().map(|b| TqView::parse(b).unwrap().blocks).sum::<u32>());
-        let (td, decs) = best_of(3, || blobs.iter().map(|b| TqView::parse(b).unwrap().decode(&rot)).collect::<Vec<_>>());
-        let (tdp, _) = best_of(3, || blobs.par_iter().map(|b| TqView::parse(b).unwrap().decode(&rot)).collect::<Vec<_>>());
+        let (td, decs) =
+            best_of(3, || blobs.iter().map(|b| TqView::parse(b).unwrap().decode(&rot)).collect::<Vec<_>>());
+        let (tdp, _) =
+            best_of(3, || blobs.par_iter().map(|b| TqView::parse(b).unwrap().decode(&rot)).collect::<Vec<_>>());
         let bytes: usize = blobs.iter().map(Vec::len).sum();
         println!(
             "  [TQ {bits}-bit timing: encode {:.1} M samples/s (1 core) / {:.1} (rayon); verify {:.2} GB/s; decode {:.1} M samples/s (1 core) / {:.1} (rayon)]",
@@ -216,10 +238,16 @@ fn main() {
         let res: Vec<BrickSamples> = smp
             .iter()
             .zip(&blobs)
-            .map(|(s, b)| BrickSamples { coord: s.coord, n: s.n, d: tq::face_residual(&TqView::parse(b).unwrap(), &rot, &s.d), faces: Default::default() })
+            .map(|(s, b)| BrickSamples {
+                coord: s.coord,
+                n: s.n,
+                d: tq::face_residual(&TqView::parse(b).unwrap(), &rot, &s.d),
+                faces: Default::default(),
+            })
             .collect();
         let hb = bytes + samples_file_bytes(&res) - empty;
-        let hdec: Vec<Vec<i32>> = smp.iter().zip(&blobs).map(|(s, b)| tq::decode_hybrid(&TqView::parse(b).unwrap(), &rot, &s.d)).collect();
+        let hdec: Vec<Vec<i32>> =
+            smp.iter().zip(&blobs).map(|(s, b)| tq::decode_hybrid(&TqView::parse(b).unwrap(), &rot, &s.d)).collect();
         report(&format!("TQ {bits}-bit hybrid (face planes exact)"), hb as f64, &hdec);
         let ub = smp.iter().map(|s| s.d.len().div_ceil(D) * (8 + D * bits as usize / 8)).sum::<usize>();
         let udec: Vec<Vec<i32>> = smp.iter().map(|s| uniform_block(&s.d, bits)).collect();
@@ -230,9 +258,21 @@ fn main() {
     // ---- narrow band: clamp to +-T quanta (1 voxel = 1024) before coding. Sign is preserved, so
     // only crossings with an endpoint beyond T move. Lossless baseline is clamped too (fair).
     for t in [2048i32, 4096, 16384] {
-        let cl: Vec<BrickSamples> = smp.iter().map(|s| BrickSamples { coord: s.coord, n: s.n, d: s.d.iter().map(|&x| x.clamp(-t, t)).collect(), faces: Default::default() }).collect();
+        let cl: Vec<BrickSamples> = smp
+            .iter()
+            .map(|s| BrickSamples {
+                coord: s.coord,
+                n: s.n,
+                d: s.d.iter().map(|&x| x.clamp(-t, t)).collect(),
+                faces: Default::default(),
+            })
+            .collect();
         let lb = samples_file_bytes(&cl) - empty;
-        report(&format!("band +-{} vox: clamp + lossless Lorenzo", t / 1024), lb as f64, &cl.iter().map(|s| s.d.clone()).collect::<Vec<_>>());
+        report(
+            &format!("band +-{} vox: clamp + lossless Lorenzo", t / 1024),
+            lb as f64,
+            &cl.iter().map(|s| s.d.clone()).collect::<Vec<_>>(),
+        );
         for bits in [2u32, 4] {
             let blobs: Vec<Vec<u8>> = cl.iter().map(|s| tq::encode(s, bits, &rot)).collect();
             let bytes: usize = blobs.iter().map(Vec::len).sum();
@@ -245,19 +285,49 @@ fn main() {
     }
     // ---- mesh-exact narrow band (lossless for the mesh by construction; verified below)
     for t in [1024i32, 4096] {
-        let bd: Vec<BrickSamples> = smp.iter().zip(&plans).map(|(s, p)| BrickSamples { coord: s.coord, n: s.n, d: tq::mesh_band(s, p.0, t), faces: s.faces.clone() }).collect();
-        let same = smp.iter().zip(&bd).zip(&plans).filter(|((a, b), p)| mesh_brick(&cfg, a, p.0, p.1) == mesh_brick(&cfg, b, p.0, p.1)).count();
-        let corners_only: Vec<BrickSamples> = bd.iter().map(|s| BrickSamples { coord: s.coord, n: s.n, d: s.d.clone(), faces: Default::default() }).collect();
+        let bd: Vec<BrickSamples> = smp
+            .iter()
+            .zip(&plans)
+            .map(|(s, p)| BrickSamples { coord: s.coord, n: s.n, d: tq::mesh_band(s, p.0, t), faces: s.faces.clone() })
+            .collect();
+        let same = smp
+            .iter()
+            .zip(&bd)
+            .zip(&plans)
+            .filter(|((a, b), p)| mesh_brick(&cfg, a, p.0, p.1) == mesh_brick(&cfg, b, p.0, p.1))
+            .count();
+        let corners_only: Vec<BrickSamples> = bd
+            .iter()
+            .map(|s| BrickSamples { coord: s.coord, n: s.n, d: s.d.clone(), faces: Default::default() })
+            .collect();
         let lb = samples_file_bytes(&corners_only) - empty;
-        let changed: usize = smp.iter().zip(&bd).map(|(a, b)| a.d.iter().zip(&b.d).filter(|(x, y)| x != y).count()).sum();
-        report(&format!("mesh-exact band, far samples clamped to +-{} vox, + lossless Lorenzo", t / 1024), lb as f64, &bd.iter().map(|s| s.d.clone()).collect::<Vec<_>>());
-        println!("    meshes bit-identical: {same}/{} bricks; samples altered {:.1}%", smp.len(), changed as f64 * 100.0 / ns as f64);
+        let changed: usize =
+            smp.iter().zip(&bd).map(|(a, b)| a.d.iter().zip(&b.d).filter(|(x, y)| x != y).count()).sum();
+        report(
+            &format!("mesh-exact band, far samples clamped to +-{} vox, + lossless Lorenzo", t / 1024),
+            lb as f64,
+            &bd.iter().map(|s| s.d.clone()).collect::<Vec<_>>(),
+        );
+        println!(
+            "    meshes bit-identical: {same}/{} bricks; samples altered {:.1}%",
+            smp.len(),
+            changed as f64 * 100.0 / ns as f64
+        );
     }
-    report("lossless Lorenzo (reference)", (lossless - empty) as f64, &smp.iter().map(|s| s.d.clone()).collect::<Vec<_>>());
+    report(
+        "lossless Lorenzo (reference)",
+        (lossless - empty) as f64,
+        &smp.iter().map(|s| s.d.clone()).collect::<Vec<_>>(),
+    );
 
     // ---- normals, d = 3: rotated scalar (uniform Lloyd-Max: at d = 3 a rotated unit vector's
     // coordinates are exactly uniform on [-1, 1], Archimedes) vs octahedral
-    let normals: Vec<[f32; 3]> = world.bricks.values().flat_map(|m| m.vertices.iter().map(|v| v.normal)).filter(|n| n.iter().map(|x| x * x).sum::<f32>() > 0.5).collect();
+    let normals: Vec<[f32; 3]> = world
+        .bricks
+        .values()
+        .flat_map(|m| m.vertices.iter().map(|v| v.normal))
+        .filter(|n| n.iter().map(|x| x * x).sum::<f32>() > 0.5)
+        .collect();
     // fixed rotation (Gram-Schmidt of a fixed matrix)
     let a = [[0.36f32, -0.48, 0.8], [0.8, 0.6, 0.0], [-0.48, 0.64, 0.6]];
     let ang = |a: [f32; 3], b: [f32; 3]| (a[0] * b[0] + a[1] * b[1] + a[2] * b[2]).clamp(-1.0, 1.0).acos().to_degrees();

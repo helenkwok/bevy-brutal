@@ -35,7 +35,12 @@ impl Key {
     }
     pub fn children(&self) -> [Key; 4] {
         let (f, l, i, j) = (self.face, self.level + 1, self.i * 2, self.j * 2);
-        [Key { face: f, level: l, i, j }, Key { face: f, level: l, i: i + 1, j }, Key { face: f, level: l, i, j: j + 1 }, Key { face: f, level: l, i: i + 1, j: j + 1 }]
+        [
+            Key { face: f, level: l, i, j },
+            Key { face: f, level: l, i: i + 1, j },
+            Key { face: f, level: l, i, j: j + 1 },
+            Key { face: f, level: l, i: i + 1, j: j + 1 },
+        ]
     }
     pub fn parent(&self) -> Option<Key> {
         (self.level > 0).then(|| Key { face: self.face, level: self.level - 1, i: self.i / 2, j: self.j / 2 })
@@ -51,7 +56,11 @@ impl Key {
             let (n, u, v) = FACES[self.face as usize];
             let (n, u, v) = (n.as_i64vec3(), u.as_i64vec3(), v.as_i64vec3());
             // fold: the overflow along u (or v) turns into depth along -n on the next face
-            let (ex, axis, other, oc) = if cu.abs() > M { (cu.abs() - M, u * cu.signum(), v, cv) } else { (cv.abs() - M, v * cv.signum(), u, cu) };
+            let (ex, axis, other, oc) = if cu.abs() > M {
+                (cu.abs() - M, u * cu.signum(), v, cv)
+            } else {
+                (cv.abs() - M, v * cv.signum(), u, cu)
+            };
             n * (M - ex) + axis * M + other * oc
         } else {
             let q = cube::cube_point(self.face as usize, cu, cv);
@@ -73,7 +82,10 @@ impl Key {
     }
     /// Is `self` equal to or an ancestor of `k`?
     pub fn covers(&self, k: &Key) -> bool {
-        self.face == k.face && self.level <= k.level && (k.i >> (k.level - self.level)) == self.i && (k.j >> (k.level - self.level)) == self.j
+        self.face == k.face
+            && self.level <= k.level
+            && (k.i >> (k.level - self.level)) == self.i
+            && (k.j >> (k.level - self.level)) == self.j
     }
 }
 

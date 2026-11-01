@@ -109,7 +109,17 @@ impl GraftFile {
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut b = Vec::new();
         b.extend_from_slice(MAGIC);
-        for v in [self.lat, self.lon, self.world_xz.0, self.world_xz.1, self.r_full_m, self.r_out_m, self.sun_world[0], self.sun_world[1], self.sun_world[2]] {
+        for v in [
+            self.lat,
+            self.lon,
+            self.world_xz.0,
+            self.world_xz.1,
+            self.r_full_m,
+            self.r_out_m,
+            self.sun_world[0],
+            self.sun_world[1],
+            self.sun_world[2],
+        ] {
             b.extend_from_slice(&v.to_le_bytes());
         }
         b.extend_from_slice(&(self.levels.len() as u32).to_le_bytes());
@@ -155,7 +165,15 @@ impl GraftFile {
             o += len;
             levels.push(GraftLevel { size, half_m, albedo, aux });
         }
-        Some(Self { lat: h[0], lon: h[1], world_xz: (h[2], h[3]), r_full_m: h[4], r_out_m: h[5], sun_world: [h[6], h[7], h[8]], levels })
+        Some(Self {
+            lat: h[0],
+            lon: h[1],
+            world_xz: (h[2], h[3]),
+            r_full_m: h[4],
+            r_out_m: h[5],
+            sun_world: [h[6], h[7], h[8]],
+            levels,
+        })
     }
 }
 
@@ -208,7 +226,15 @@ mod tests {
     #[test]
     fn file_round_trip() {
         let l = GraftLevel { size: 2, half_m: 100.0, albedo: (0..16).collect(), aux: (16..32).collect() };
-        let f = GraftFile { lat: 46.1, lon: 7.6, world_xz: (7700.0, -4200.0), r_full_m: 1.0, r_out_m: 2.0, sun_world: [0.1, 0.2, 0.3], levels: vec![l.clone(), l] };
+        let f = GraftFile {
+            lat: 46.1,
+            lon: 7.6,
+            world_xz: (7700.0, -4200.0),
+            r_full_m: 1.0,
+            r_out_m: 2.0,
+            sun_world: [0.1, 0.2, 0.3],
+            levels: vec![l.clone(), l],
+        };
         let g = GraftFile::from_bytes(&f.to_bytes()).unwrap();
         assert_eq!(g.levels.len(), 2);
         assert_eq!(g.levels[1].aux, f.levels[1].aux);

@@ -34,8 +34,11 @@ fn main() {
         .split(',')
         .map(|s| s.trim().replace('_', "").parse().expect("bad --instances"))
         .collect();
-    let frames: Vec<usize> =
-        arg(&args, "--frames").unwrap_or_else(|| "60,30,10".into()).split(',').map(|s| s.trim().parse().expect("bad --frames")).collect();
+    let frames: Vec<usize> = arg(&args, "--frames")
+        .unwrap_or_else(|| "60,30,10".into())
+        .split(',')
+        .map(|s| s.trim().parse().expect("bad --frames"))
+        .collect();
     let (w, h) = arg(&args, "--size")
         .map(|s| {
             let (a, b) = s.split_once('x').expect("--size WxH");
@@ -52,7 +55,11 @@ fn main() {
     let fif: usize = arg(&args, "--fif").map(|s| s.parse().expect("bad --fif")).unwrap_or(2);
 
     let max = *counts.iter().max().unwrap();
-    let mut b = AshBackend::new(BackendConfig { max_instances: max, extent: (w, h), validation: validate, frames_in_flight: fif, scan }, None).expect("backend");
+    let mut b = AshBackend::new(
+        BackendConfig { max_instances: max, extent: (w, h), validation: validate, frames_in_flight: fif, scan },
+        None,
+    )
+    .expect("backend");
     eprintln!(
         "device: {} | {w}x{h} | frames in flight: {fif} | scan: {:?} | validation: {} (sync: {}) | timestamps: {}",
         b.device_name(),

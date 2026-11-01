@@ -84,7 +84,8 @@ struct Q {
 }
 
 fn quantise(i: &Instance) -> Q {
-    let yaw = ((i.yaw as f64 / std::f64::consts::TAU * (1u64 << YAW_BITS) as f64).round() as i64).rem_euclid(1 << YAW_BITS) as u32;
+    let yaw = ((i.yaw as f64 / std::f64::consts::TAU * (1u64 << YAW_BITS) as f64).round() as i64)
+        .rem_euclid(1 << YAW_BITS) as u32;
     let h = (i.height.max(1e-3) as f64).log2() * 64.0;
     let w = (i.width as f64 / i.height.max(1e-3) as f64 * 256.0).round();
     Q {

@@ -11,7 +11,9 @@ fn main() {
     let scene = CaveScene { seed: 1 };
     let (lo_m, hi_m) = ([-16.0, -4.0, -12.0], [16.0, 14.0, 16.0]);
     if !json {
-        println!("| brick | voxel m | brick m | bricks sampled | occupied | sample us/brick | mesh us/brick | tris total | tris/occupied | KiB density/brick | KiB mesh/occupied | total ms (1 thread) |");
+        println!(
+            "| brick | voxel m | brick m | bricks sampled | occupied | sample us/brick | mesh us/brick | tris total | tris/occupied | KiB density/brick | KiB mesh/occupied | total ms (1 thread) |"
+        );
         println!("|---|---|---|---|---|---|---|---|---|---|---|---|");
     }
     for n in [16u32, 32, 64] {

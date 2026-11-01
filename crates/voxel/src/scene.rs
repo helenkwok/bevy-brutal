@@ -49,7 +49,8 @@ fn round_box(p: [f64; 3], c: [f64; 3], half: [f64; 3], r: f64) -> f64 {
 fn capsule(p: [f64; 3], a: [f64; 3], b: [f64; 3], r: f64) -> f64 {
     let pa = [0, 1, 2].map(|i| p[i] - a[i]);
     let ba = [0, 1, 2].map(|i| b[i] - a[i]);
-    let h = ((pa[0] * ba[0] + pa[1] * ba[1] + pa[2] * ba[2]) / (ba[0] * ba[0] + ba[1] * ba[1] + ba[2] * ba[2])).clamp(0.0, 1.0);
+    let h = ((pa[0] * ba[0] + pa[1] * ba[1] + pa[2] * ba[2]) / (ba[0] * ba[0] + ba[1] * ba[1] + ba[2] * ba[2]))
+        .clamp(0.0, 1.0);
     let d = [0, 1, 2].map(|i| pa[i] - ba[i] * h);
     (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt() - r
 }
@@ -68,7 +69,8 @@ pub struct CaveScene {
 impl DensityField for CaveScene {
     fn density(&self, p: [f64; 3]) -> f64 {
         let [x, y, z] = p;
-        let ground = y - (1.2 * (0.21 * x).sin() + 1.0 * (0.17 * z).cos() + 0.8 * fbm3([x * 0.3, 0.0, z * 0.3], self.seed));
+        let ground =
+            y - (1.2 * (0.21 * x).sin() + 1.0 * (0.17 * z).cos() + 0.8 * fbm3([x * 0.3, 0.0, z * 0.3], self.seed));
         let disp = 0.9 * fbm3(p.map(|c| c * 0.45), self.seed + 17);
         let rock = round_box(p, [0.0, 4.0, 0.0], [7.0, 6.0, 5.0], 1.5) + disp;
         let lip = round_box(p, [0.0, 9.2, 6.0], [6.5, 1.4, 3.5], 0.8) + 0.7 * disp;
@@ -146,7 +148,8 @@ impl DensityField for Mountains {
             f *= 2.1;
         }
         let ground = y - (h - 18.0);
-        let arch = round_box(p, [10.0, 34.0, -6.0], [16.0, 3.5, 4.0], 2.0) + 1.2 * fbm3(p.map(|c| c * 0.2), self.seed + 9);
+        let arch =
+            round_box(p, [10.0, 34.0, -6.0], [16.0, 3.5, 4.0], 2.0) + 1.2 * fbm3(p.map(|c| c * 0.2), self.seed + 9);
         let hole = capsule(p, [10.0, 26.0, -14.0], [10.0, 26.0, 2.0], 7.5);
         ground.min(arch.max(-hole)) + 0.6 * fbm3(p.map(|c| c * 0.15), self.seed + 5)
     }
@@ -182,9 +185,11 @@ impl DensityField for Seabed {
         let [x, y, z] = p;
         let dunes = 0.9 * (0.3 * x + 0.8 * (0.05 * z).sin()).sin() + 1.5 * fbm3([x * 0.06, 0.0, z * 0.06], self.seed);
         let ground = y - (-20.0 + dunes);
-        let rock = round_box(p, [-6.0, -15.0, -4.0], [5.0, 5.0, 4.0], 1.5) + 1.0 * fbm3(p.map(|c| c * 0.3), self.seed + 3);
+        let rock =
+            round_box(p, [-6.0, -15.0, -4.0], [5.0, 5.0, 4.0], 1.5) + 1.0 * fbm3(p.map(|c| c * 0.3), self.seed + 3);
         let arch_hole = capsule(p, [-6.0, -17.0, -10.0], [-6.0, -17.0, 10.0], 3.0);
-        let boulders = sphere(p, [8.0, -19.5, 6.0], 2.5).min(sphere(p, [12.0, -19.8, -3.0], 1.6)) + 0.4 * fbm3(p.map(|c| c * 0.8), self.seed + 4);
+        let boulders = sphere(p, [8.0, -19.5, 6.0], 2.5).min(sphere(p, [12.0, -19.8, -3.0], 1.6))
+            + 0.4 * fbm3(p.map(|c| c * 0.8), self.seed + 4);
         ground.min(rock.max(-arch_hole)).min(boulders)
     }
 }

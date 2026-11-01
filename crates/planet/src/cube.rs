@@ -60,7 +60,13 @@ pub fn lattice_dir(f: usize, uu: i64, vv: i64) -> DVec3 {
 /// a direction: the inverse of [`point_dir`] up to rounding.
 pub fn dir_face(d: DVec3) -> (usize, f64, f64) {
     let a = d.abs();
-    let (ax, s) = if a.x >= a.y && a.x >= a.z { (0, d.x) } else if a.y >= a.z { (1, d.y) } else { (2, d.z) };
+    let (ax, s) = if a.x >= a.y && a.x >= a.z {
+        (0, d.x)
+    } else if a.y >= a.z {
+        (1, d.y)
+    } else {
+        (2, d.z)
+    };
     let f = ax * 2 + usize::from(s < 0.0);
     let (n, u, v) = FACES[f];
     let dn = d.dot(n.as_dvec3());

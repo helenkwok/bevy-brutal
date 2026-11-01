@@ -23,11 +23,7 @@ fn sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
     [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
 }
 fn cross(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
-    [
-        a[1] * b[2] - a[2] * b[1],
-        a[2] * b[0] - a[0] * b[2],
-        a[0] * b[1] - a[1] * b[0],
-    ]
+    [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
 }
 fn dot(a: [f64; 3], b: [f64; 3]) -> f64 {
     a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
@@ -45,11 +41,7 @@ pub fn spike_flags(pos: &[[f64; 3]], indices: &[u32]) -> Vec<[bool; 3]> {
         if a2 > 0.0 {
             nrm[t] = n.map(|v| v / a2);
         }
-        let l = [
-            dot(sub(b, a), sub(b, a)),
-            dot(sub(c, b), sub(c, b)),
-            dot(sub(a, c), sub(a, c)),
-        ];
+        let l = [dot(sub(b, a), sub(b, a)), dot(sub(c, b), sub(c, b)), dot(sub(a, c), sub(a, c))];
         let lmax = l[0].max(l[1]).max(l[2]);
         flags[t][1] = a2 <= 0.0 || lmax / a2 > 25.0;
     }
@@ -67,10 +59,7 @@ pub fn spike_flags(pos: &[[f64; 3]], indices: &[u32]) -> Vec<[bool; 3]> {
                 && dot(nrm[t], nrm[u]) < -0.5
             {
                 // the neighbour's far vertex on the solid side of this face: convex edge
-                let w = (0..3)
-                    .map(|m| indices[3 * u + m])
-                    .find(|&v| v != i && v != j)
-                    .unwrap_or(i);
+                let w = (0..3).map(|m| indices[3 * u + m]).find(|&v| v != i && v != j).unwrap_or(i);
                 let a = pos[indices[3 * t] as usize];
                 if dot(nrm[t], sub(pos[w as usize], a)) < 0.0 {
                     flags[t][0] = true;
@@ -84,11 +73,7 @@ pub fn spike_flags(pos: &[[f64; 3]], indices: &[u32]) -> Vec<[bool; 3]> {
 }
 
 /// Spike counts over the triangles selected by `keep` (called with the triangle's centroid).
-pub fn spike_counts(
-    pos: &[[f64; 3]],
-    indices: &[u32],
-    keep: impl Fn([f64; 3]) -> bool,
-) -> SpikeCounts {
+pub fn spike_counts(pos: &[[f64; 3]], indices: &[u32], keep: impl Fn([f64; 3]) -> bool) -> SpikeCounts {
     let flags = spike_flags(pos, indices);
     let mut s = SpikeCounts::default();
     for (t, f) in flags.iter().enumerate() {
@@ -121,41 +106,16 @@ mod tests {
         let mut idx = Vec::new();
         for z in 0..4 {
             for x in 0..4 {
-                idx.extend([
-                    v(x, z),
-                    v(x, z + 1),
-                    v(x + 1, z + 1),
-                    v(x, z),
-                    v(x + 1, z + 1),
-                    v(x + 1, z),
-                ]);
+                idx.extend([v(x, z), v(x, z + 1), v(x + 1, z + 1), v(x, z), v(x + 1, z + 1), v(x + 1, z)]);
             }
         }
-        assert_eq!(
-            spike_counts(&pos, &idx, |_| true),
-            SpikeCounts {
-                tris: 32,
-                folds: 0,
-                creases: 0,
-                needles: 0
-            }
-        );
+        assert_eq!(spike_counts(&pos, &idx, |_| true), SpikeCounts { tris: 32, folds: 0, creases: 0, needles: 0 });
         // two triangles sharing an edge, folded nearly flat onto each other: behind the first
         // face (its solid side) a thin fin, in front of it (its air side) a thin slot
-        let fin = [
-            [0.0, 0.0, 0.0],
-            [1.0, 0.0, 0.0],
-            [0.5, 1.0, 0.0],
-            [0.5, 1.0, -0.05],
-        ];
+        let fin = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0], [0.5, 1.0, -0.05]];
         let s = spike_counts(&fin, &[0, 1, 2, 1, 0, 3], |_| true);
         assert_eq!((s.tris, s.folds, s.creases), (2, 2, 0));
-        let slot = [
-            [0.0, 0.0, 0.0],
-            [1.0, 0.0, 0.0],
-            [0.5, 1.0, 0.0],
-            [0.5, 1.0, 0.05],
-        ];
+        let slot = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0], [0.5, 1.0, 0.05]];
         let s = spike_counts(&slot, &[0, 1, 2, 1, 0, 3], |_| true);
         assert_eq!((s.tris, s.folds, s.creases), (2, 0, 2));
         // a needle

@@ -24,7 +24,8 @@ fn orientation_agreement(w: &VoxelWorld) -> f64 {
         for t in m.indices.as_chunks::<3>().0 {
             let [a, b, c] = t.map(|i| i as usize);
             let n = tri_normal(m.ipos[a], m.ipos[b], m.ipos[c]);
-            let g = [0, 1, 2].map(|k| (m.vertices[a].normal[k] + m.vertices[b].normal[k] + m.vertices[c].normal[k]) as f64);
+            let g =
+                [0, 1, 2].map(|k| (m.vertices[a].normal[k] + m.vertices[b].normal[k] + m.vertices[c].normal[k]) as f64);
             total += 1;
             if n[0] as f64 * g[0] + n[1] as f64 * g[1] + n[2] as f64 * g[2] > 0.0 {
                 good += 1;
@@ -184,7 +185,12 @@ fn a7_fuzz_adversarial_densities() {
         let layouts: Vec<Box<dyn LodLayout>> = vec![
             Box::new(UniformLod(0)),
             Box::new(UniformLod(1)),
-            Box::new(SlabLayout { axis: (seed % 3) as usize, split: 0, lod_below: (seed % 2) as u8, lod_above: 1 - (seed % 2) as u8 }),
+            Box::new(SlabLayout {
+                axis: (seed % 3) as usize,
+                split: 0,
+                lod_below: (seed % 2) as u8,
+                lod_above: 1 - (seed % 2) as u8,
+            }),
             Box::new(ShellLayout::camera_centred(&c.grid, cam, &[1])),
             Box::new(ShellLayout::camera_centred(&c.grid, cam, &[1, 1])),
         ];
@@ -281,7 +287,13 @@ fn h8_unsupported_layouts_are_refused() {
     struct Pinched;
     impl LodLayout for Pinched {
         fn lod_at(&self, p: [i64; 3]) -> u8 {
-            if p[0] < 32 && p[1] >= 32 { 0 } else if p[0] >= 32 { 2 } else { 1 }
+            if p[0] < 32 && p[1] >= 32 {
+                0
+            } else if p[0] >= 32 {
+                2
+            } else {
+                1
+            }
         }
         fn finer_box(&self, lod: u8) -> Option<Aabb> {
             match lod {
@@ -304,7 +316,11 @@ fn shell_layout_is_nested_aligned_and_has_margin() {
     let lay = ShellLayout::camera_centred(&g, [1000, -77, 5], &[2, 2, 1]);
     for (l, b) in lay.boxes.iter().enumerate() {
         let next_ext = 32i64 << (l + 1);
-        assert!(b.lo.iter().chain(&b.hi).all(|v| v.rem_euclid(next_ext) == 0), "box {l} aligned to LOD{} bricks", l + 1);
+        assert!(
+            b.lo.iter().chain(&b.hi).all(|v| v.rem_euclid(next_ext) == 0),
+            "box {l} aligned to LOD{} bricks",
+            l + 1
+        );
         assert!(b.contains([1000, -77, 5]));
         if l > 0 {
             let p = lay.boxes[l - 1];

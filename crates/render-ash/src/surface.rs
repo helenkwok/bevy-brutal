@@ -147,9 +147,20 @@ impl TerrainGpu {
             vk::BufferUsageFlags::VERTEX_BUFFER | vk::BufferUsageFlags::TRANSFER_DST,
             MemoryLocation::GpuOnly,
         )?;
-        let indices = upload_static(ctx, "terrain_indices", bytemuck::cast_slice(grid_indices), vk::BufferUsageFlags::INDEX_BUFFER)?;
+        let indices = upload_static(
+            ctx,
+            "terrain_indices",
+            bytemuck::cast_slice(grid_indices),
+            vk::BufferUsageFlags::INDEX_BUFFER,
+        )?;
         let ring = StagingRing {
-            buf: GpuBuffer::new(ctx, "terrain_staging", cfg.staging_bytes, vk::BufferUsageFlags::TRANSFER_SRC, MemoryLocation::CpuToGpu)?,
+            buf: GpuBuffer::new(
+                ctx,
+                "terrain_staging",
+                cfg.staging_bytes,
+                vk::BufferUsageFlags::TRANSFER_SRC,
+                MemoryLocation::CpuToGpu,
+            )?,
             alloc: RingAlloc::new(cfg.staging_bytes),
         };
         Ok(Self {
@@ -174,7 +185,13 @@ impl TerrainGpu {
     }
 
     /// Stage `bytes` (a whole chunk's vertices) for `coord`, to be copied by frame `next_frame`.
-    pub(crate) fn upload(&mut self, coord: [i32; 2], bytes: &[u8], next_frame: u64, completed: u64) -> Result<UploadOutcome, BackendError> {
+    pub(crate) fn upload(
+        &mut self,
+        coord: [i32; 2],
+        bytes: &[u8],
+        next_frame: u64,
+        completed: u64,
+    ) -> Result<UploadOutcome, BackendError> {
         let slot_bytes = self.cfg.verts_per_slot as u64 * SURFACE_VERTEX_BYTES as u64;
         if bytes.len() as u64 != slot_bytes {
             return Err(BackendError::BadConfig("terrain chunk vertex data must fill exactly one slot"));
@@ -257,10 +274,16 @@ pub(crate) struct StaticMesh {
 }
 
 /// Device-local buffer filled through a temporary staging buffer (GPU idle on return).
-pub(crate) fn upload_static(ctx: &mut VkContext, name: &str, bytes: &[u8], usage: vk::BufferUsageFlags) -> Result<GpuBuffer, BackendError> {
+pub(crate) fn upload_static(
+    ctx: &mut VkContext,
+    name: &str,
+    bytes: &[u8],
+    usage: vk::BufferUsageFlags,
+) -> Result<GpuBuffer, BackendError> {
     let size = bytes.len().max(4) as u64;
     let dst = GpuBuffer::new(ctx, name, size, usage | vk::BufferUsageFlags::TRANSFER_DST, MemoryLocation::GpuOnly)?;
-    let mut staging = GpuBuffer::new(ctx, "static_staging", size, vk::BufferUsageFlags::TRANSFER_SRC, MemoryLocation::CpuToGpu)?;
+    let mut staging =
+        GpuBuffer::new(ctx, "static_staging", size, vk::BufferUsageFlags::TRANSFER_SRC, MemoryLocation::CpuToGpu)?;
     staging.mapped_mut()[..bytes.len()].copy_from_slice(bytes);
     let d = ctx.device.clone();
     let (src, dbuf) = (staging.buffer, dst.buffer);

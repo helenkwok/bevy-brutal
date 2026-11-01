@@ -13,23 +13,26 @@ pub mod cull;
 pub mod grass;
 pub mod impostor;
 pub mod mesh;
-pub mod planet;
-pub mod scene;
 mod pass;
+pub mod planet;
+pub mod quality;
+pub mod scene;
 pub mod surface;
-pub mod system;
 #[cfg(feature = "windowed")]
 pub mod swapchain;
-pub mod validation;
-pub mod quality;
+pub mod system;
 pub mod tq_gpu;
+pub mod validation;
 pub mod voxel_gpu;
 
 use ash::vk;
 
 pub use context::{SubgroupInfo, VkContext, WindowHandles};
+pub use pass::{
+    AshBackend, BackendConfig, FrameStats, MAX_MESHES, SCAN_TILE, ScanMode, ScanPath, cpu_exclusive_scan,
+    plan_subgroup_scan,
+};
 pub use surface::{SURFACE_VERTEX_BYTES, TerrainGpuConfig, UploadOutcome, UploadStats};
-pub use pass::{AshBackend, BackendConfig, FrameStats, MAX_MESHES, SCAN_TILE, ScanMode, ScanPath, cpu_exclusive_scan, plan_subgroup_scan};
 
 /// Valid range for `BackendConfig::frames_in_flight`.
 pub const MIN_FRAMES_IN_FLIGHT: usize = 2;

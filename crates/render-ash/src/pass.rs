@@ -25,7 +25,9 @@ use lowlevel_abi::{FrameSnapshot, InstanceGpu, RenderBackend};
 use crate::context::{GpuBuffer, GpuImage, SubgroupInfo, VkContext, WindowHandles, image_barrier, memory_barrier};
 use crate::cull::frustum_planes;
 use crate::mesh::{MeshData, MeshInfoGpu, MeshVertex, builtin_meshes};
-use crate::surface::{SURFACE_VERTEX_BYTES, StaticMesh, TerrainGpu, TerrainGpuConfig, UploadOutcome, UploadStats, upload_static};
+use crate::surface::{
+    SURFACE_VERTEX_BYTES, StaticMesh, TerrainGpu, TerrainGpuConfig, UploadOutcome, UploadStats, upload_static,
+};
 use crate::{BackendError, MAX_FRAMES_IN_FLIGHT, MIN_FRAMES_IN_FLIGHT};
 
 /// Capacity of the mesh table (and of per-slot counts/offsets/draws). The per-mesh scan is a
@@ -145,7 +147,9 @@ impl ScanMode {
 pub enum ScanPath {
     /// Subgroup kernel with full subgroups. `required_size` is set when subgroupSizeControl allowed
     /// pinning it; otherwise the size may vary per dispatch (ALLOW_VARYING) and the kernel adapts.
-    Subgroup { required_size: Option<u32> },
+    Subgroup {
+        required_size: Option<u32>,
+    },
     SharedMemory,
 }
 
@@ -285,7 +289,15 @@ pub(crate) struct Pipelines {
 /// Record a multi-level exclusive scan of `n` u32 at `input` into `output` (may alias).
 /// `scratch[k]` holds the tile totals of level k (needs `scan_levels(n)[k+1]` u32).
 /// Ends with a compute->compute barrier; the caller adds the barrier to its consumer.
-pub(crate) fn record_scan(d: &ash::Device, p: &Pipelines, cmd: vk::CommandBuffer, input: u64, output: u64, n: u32, scratch: &[u64]) {
+pub(crate) fn record_scan(
+    d: &ash::Device,
+    p: &Pipelines,
+    cmd: vk::CommandBuffer,
+    input: u64,
+    output: u64,
+    n: u32,
+    scratch: &[u64],
+) {
     use vk::AccessFlags2 as A;
     use vk::PipelineStageFlags2 as S;
     if n == 0 {
@@ -305,7 +317,13 @@ pub(crate) fn record_scan(d: &ash::Device, p: &Pipelines, cmd: vk::CommandBuffer
         for (k, &len) in sizes.iter().enumerate() {
             let (inp, out) = if k == 0 { (input, output) } else { (scratch[k - 1], scratch[k - 1]) };
             let has_sums = k + 1 < sizes.len();
-            push(&ScanPushGpu { input: inp, output: out, sums: if has_sums { scratch[k] } else { 0 }, n: len, has_sums: has_sums as u32 });
+            push(&ScanPushGpu {
+                input: inp,
+                output: out,
+                sums: if has_sums { scratch[k] } else { 0 },
+                n: len,
+                has_sums: has_sums as u32,
+            });
             d.cmd_dispatch(cmd, len.div_ceil(SCAN_TILE), 1, 1);
             memory_barrier(d, cmd, rw, rw);
         }
@@ -366,7 +384,9 @@ fn create_pipelines(d: &ash::Device, wave: Option<Option<u32>>) -> Result<Pipeli
     // SAFETY: device valid; create infos reference live arrays. Shader modules are destroyed after
     // pipeline creation, which is allowed.
     unsafe {
-        let layout = |r: &[vk::PushConstantRange]| d.create_pipeline_layout(&vk::PipelineLayoutCreateInfo::default().push_constant_ranges(r), None);
+        let layout = |r: &[vk::PushConstantRange]| {
+            d.create_pipeline_layout(&vk::PipelineLayoutCreateInfo::default().push_constant_ranges(r), None)
+        };
         let compute_layout = layout(&cpush)?;
         let scan_layout = layout(&spush)?;
         let gfx_layout = layout(&gpush)?;
@@ -384,7 +404,12 @@ fn create_pipelines(d: &ash::Device, wave: Option<Option<u32>>) -> Result<Pipeli
             .zip(&srcs)
             .map(|(&m, &(_, l))| {
                 vk::ComputePipelineCreateInfo::default()
-                    .stage(vk::PipelineShaderStageCreateInfo::default().stage(vk::ShaderStageFlags::COMPUTE).module(m).name(c"main"))
+                    .stage(
+                        vk::PipelineShaderStageCreateInfo::default()
+                            .stage(vk::ShaderStageFlags::COMPUTE)
+                            .module(m)
+                            .name(c"main"),
+                    )
                     .layout(l)
             })
             .collect();
@@ -398,13 +423,17 @@ fn create_pipelines(d: &ash::Device, wave: Option<Option<u32>>) -> Result<Pipeli
             None => (None, ScanPath::SharedMemory),
             Some(required) => {
                 let m = shader_module(d, SCAN_BLOCKS_WAVE_SPV)?;
-                let mut req = vk::PipelineShaderStageRequiredSubgroupSizeCreateInfo::default().required_subgroup_size(required.unwrap_or(0));
+                let mut req = vk::PipelineShaderStageRequiredSubgroupSizeCreateInfo::default()
+                    .required_subgroup_size(required.unwrap_or(0));
                 let mut flags = vk::PipelineShaderStageCreateFlags::REQUIRE_FULL_SUBGROUPS;
                 if required.is_none() {
                     flags |= vk::PipelineShaderStageCreateFlags::ALLOW_VARYING_SUBGROUP_SIZE;
                 }
-                let mut stage =
-                    vk::PipelineShaderStageCreateInfo::default().stage(vk::ShaderStageFlags::COMPUTE).module(m).name(c"main").flags(flags);
+                let mut stage = vk::PipelineShaderStageCreateInfo::default()
+                    .stage(vk::ShaderStageFlags::COMPUTE)
+                    .module(m)
+                    .name(c"main")
+                    .flags(flags);
                 if required.is_some() {
                     stage = stage.push_next(&mut req);
                 }
@@ -436,7 +465,12 @@ fn create_pipelines(d: &ash::Device, wave: Option<Option<u32>>) -> Result<Pipeli
 }
 
 /// Graphics pipeline over pos+normal vertices (24-byte stride) into COLOR_FORMAT + DEPTH_FORMAT.
-fn gfx_pipeline(d: &ash::Device, gfx_layout: vk::PipelineLayout, vs_spv: &[u8], fs_spv: &[u8]) -> Result<vk::Pipeline, BackendError> {
+fn gfx_pipeline(
+    d: &ash::Device,
+    gfx_layout: vk::PipelineLayout,
+    vs_spv: &[u8],
+    fs_spv: &[u8],
+) -> Result<vk::Pipeline, BackendError> {
     // SAFETY: device valid; create infos reference live locals; modules destroyed after creation.
     unsafe {
         let vs = shader_module(d, vs_spv)?;
@@ -451,8 +485,18 @@ fn gfx_pipeline(d: &ash::Device, gfx_layout: vk::PipelineLayout, vs_spv: &[u8], 
             input_rate: vk::VertexInputRate::VERTEX,
         }];
         let attrs = [
-            vk::VertexInputAttributeDescription { location: 0, binding: 0, format: vk::Format::R32G32B32_SFLOAT, offset: 0 },
-            vk::VertexInputAttributeDescription { location: 1, binding: 0, format: vk::Format::R32G32B32_SFLOAT, offset: 12 },
+            vk::VertexInputAttributeDescription {
+                location: 0,
+                binding: 0,
+                format: vk::Format::R32G32B32_SFLOAT,
+                offset: 0,
+            },
+            vk::VertexInputAttributeDescription {
+                location: 1,
+                binding: 0,
+                format: vk::Format::R32G32B32_SFLOAT,
+                offset: 12,
+            },
         ];
         let vi = vk::PipelineVertexInputStateCreateInfo::default()
             .vertex_binding_descriptions(&bindings)
@@ -524,10 +568,13 @@ fn new_slot(ctx: &mut VkContext, max_instances: usize, extent: vk::Extent2D) -> 
     // SAFETY: device valid; create infos fully initialised.
     let (pool, cmd, queries) = unsafe {
         let pool = ctx.device.create_command_pool(&pci, None)?;
-        let cmd = ctx.device.allocate_command_buffers(&vk::CommandBufferAllocateInfo::default().command_pool(pool).command_buffer_count(1))?[0];
-        let queries = ctx
-            .device
-            .create_query_pool(&vk::QueryPoolCreateInfo::default().query_type(vk::QueryType::TIMESTAMP).query_count(QUERIES), None)?;
+        let cmd = ctx.device.allocate_command_buffers(
+            &vk::CommandBufferAllocateInfo::default().command_pool(pool).command_buffer_count(1),
+        )?[0];
+        let queries = ctx.device.create_query_pool(
+            &vk::QueryPoolCreateInfo::default().query_type(vk::QueryType::TIMESTAMP).query_count(QUERIES),
+            None,
+        )?;
         (pool, cmd, queries)
     };
     let mesh_bytes = (MAX_MESHES * 4) as u64;
@@ -542,8 +589,20 @@ fn new_slot(ctx: &mut VkContext, max_instances: usize, extent: vk::Extent2D) -> 
         cmd,
         queries,
         frame_buf: GpuBuffer::new(ctx, "frame", size_of::<FrameGpu>() as u64, sda, MemoryLocation::CpuToGpu)?,
-        inst_buf: GpuBuffer::new(ctx, "instances", (max_instances * size_of::<InstanceGpu>()) as u64, sda, MemoryLocation::CpuToGpu)?,
-        counts: GpuBuffer::new(ctx, "counts", mesh_bytes, sda | vk::BufferUsageFlags::TRANSFER_DST, MemoryLocation::GpuOnly)?,
+        inst_buf: GpuBuffer::new(
+            ctx,
+            "instances",
+            (max_instances * size_of::<InstanceGpu>()) as u64,
+            sda,
+            MemoryLocation::CpuToGpu,
+        )?,
+        counts: GpuBuffer::new(
+            ctx,
+            "counts",
+            mesh_bytes,
+            sda | vk::BufferUsageFlags::TRANSFER_DST,
+            MemoryLocation::GpuOnly,
+        )?,
         offsets: GpuBuffer::new(ctx, "offsets", mesh_bytes, sda, MemoryLocation::GpuOnly)?,
         scan_scratch,
         inst_slots: GpuBuffer::new(ctx, "instance_slots", (max_instances * 4) as u64, sda, MemoryLocation::GpuOnly)?,
@@ -559,10 +618,18 @@ fn new_slot(ctx: &mut VkContext, max_instances: usize, extent: vk::Extent2D) -> 
             ctx,
             "draw_count",
             16,
-            sda | vk::BufferUsageFlags::INDIRECT_BUFFER | vk::BufferUsageFlags::TRANSFER_SRC | vk::BufferUsageFlags::TRANSFER_DST,
+            sda | vk::BufferUsageFlags::INDIRECT_BUFFER
+                | vk::BufferUsageFlags::TRANSFER_SRC
+                | vk::BufferUsageFlags::TRANSFER_DST,
             MemoryLocation::GpuOnly,
         )?,
-        stats_buf: GpuBuffer::new(ctx, "stats", STATS_DRAWS_OFFSET + draw_bytes, vk::BufferUsageFlags::TRANSFER_DST, MemoryLocation::GpuToCpu)?,
+        stats_buf: GpuBuffer::new(
+            ctx,
+            "stats",
+            STATS_DRAWS_OFFSET + draw_bytes,
+            vk::BufferUsageFlags::TRANSFER_DST,
+            MemoryLocation::GpuToCpu,
+        )?,
         color,
         depth,
         submitted: 0,
@@ -604,10 +671,14 @@ impl AshBackend {
             ScanMode::Subgroup => Some(plan_subgroup_scan(&ctx.subgroup).map_err(BackendError::Unsupported)?),
         };
         let pipes = create_pipelines(&ctx.device, wave)?;
-        let slots = (0..cfg.frames_in_flight).map(|_| new_slot(&mut ctx, max_instances, extent)).collect::<Result<Vec<_>, _>>()?;
-        let mut tci = vk::SemaphoreTypeCreateInfo::default().semaphore_type(vk::SemaphoreType::TIMELINE).initial_value(0);
+        let slots = (0..cfg.frames_in_flight)
+            .map(|_| new_slot(&mut ctx, max_instances, extent))
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut tci =
+            vk::SemaphoreTypeCreateInfo::default().semaphore_type(vk::SemaphoreType::TIMELINE).initial_value(0);
         // SAFETY: device valid; timeline semaphores are enabled.
-        let timeline = unsafe { ctx.device.create_semaphore(&vk::SemaphoreCreateInfo::default().push_next(&mut tci), None)? };
+        let timeline =
+            unsafe { ctx.device.create_semaphore(&vk::SemaphoreCreateInfo::default().push_next(&mut tci), None)? };
         let mesh_buf = GpuBuffer::new(
             &mut ctx,
             "mesh_table",
@@ -687,7 +758,11 @@ impl AshBackend {
 
     /// Stage one chunk's vertices (`TerrainVertex`/24-byte pos+normal) for `coord`. The copy is
     /// recorded into the next `render()`. Returns where it went and what was evicted.
-    pub fn upload_terrain_chunk<V: bytemuck::Pod>(&mut self, coord: [i32; 2], vertices: &[V]) -> Result<UploadOutcome, BackendError> {
+    pub fn upload_terrain_chunk<V: bytemuck::Pod>(
+        &mut self,
+        coord: [i32; 2],
+        vertices: &[V],
+    ) -> Result<UploadOutcome, BackendError> {
         const { assert!(size_of::<V>() == SURFACE_VERTEX_BYTES) };
         let completed = self.completed_frame()?;
         let next = self.frame_number + 1;
@@ -715,8 +790,18 @@ impl AshBackend {
             return Ok(());
         }
         self.ctx.wait_idle();
-        let vb = upload_static(&mut self.ctx, "static_vertices", bytemuck::cast_slice(vertices), vk::BufferUsageFlags::VERTEX_BUFFER)?;
-        let ib = upload_static(&mut self.ctx, "static_indices", bytemuck::cast_slice(indices), vk::BufferUsageFlags::INDEX_BUFFER)?;
+        let vb = upload_static(
+            &mut self.ctx,
+            "static_vertices",
+            bytemuck::cast_slice(vertices),
+            vk::BufferUsageFlags::VERTEX_BUFFER,
+        )?;
+        let ib = upload_static(
+            &mut self.ctx,
+            "static_indices",
+            bytemuck::cast_slice(indices),
+            vk::BufferUsageFlags::INDEX_BUFFER,
+        )?;
         self.statics.push(StaticMesh { vertices: vb, indices: ib, index_count: indices.len() as u32 });
         Ok(())
     }
@@ -794,10 +879,20 @@ impl AshBackend {
             // SAFETY: cmd is recording; buffers are live and large enough for the regions.
             unsafe {
                 if vlen > 0 {
-                    d.cmd_copy_buffer(cmd, staging.buffer, vb.buffer, &[vk::BufferCopy { src_offset: 0, dst_offset: 0, size: vlen }]);
+                    d.cmd_copy_buffer(
+                        cmd,
+                        staging.buffer,
+                        vb.buffer,
+                        &[vk::BufferCopy { src_offset: 0, dst_offset: 0, size: vlen }],
+                    );
                 }
                 if ilen > 0 {
-                    d.cmd_copy_buffer(cmd, staging.buffer, ib.buffer, &[vk::BufferCopy { src_offset: vlen, dst_offset: 0, size: ilen }]);
+                    d.cmd_copy_buffer(
+                        cmd,
+                        staging.buffer,
+                        ib.buffer,
+                        &[vk::BufferCopy { src_offset: vlen, dst_offset: 0, size: ilen }],
+                    );
                 }
             }
             memory_barrier(
@@ -848,7 +943,12 @@ impl AshBackend {
         let addrs: Vec<u64> = scratch.iter().map(|b| b.address).collect();
         let (d, p, ia, oa) = (self.ctx.device.clone(), self.pipes, input.address, output.address);
         // SAFETY: device valid; create info fully initialised. Destroyed below after the GPU is idle.
-        let qp = unsafe { d.create_query_pool(&vk::QueryPoolCreateInfo::default().query_type(vk::QueryType::TIMESTAMP).query_count(2), None)? };
+        let qp = unsafe {
+            d.create_query_pool(
+                &vk::QueryPoolCreateInfo::default().query_type(vk::QueryType::TIMESTAMP).query_count(2),
+                None,
+            )?
+        };
         let r = self.ctx.immediate_submit(|cmd| {
             use vk::PipelineStageFlags2 as S;
             // SAFETY: cmd recording; query pool live with 2 queries.
@@ -861,13 +961,20 @@ impl AshBackend {
             record_scan(&d, &p, cmd, ia, oa, n, &addrs);
             // SAFETY: cmd recording.
             unsafe { d.cmd_write_timestamp2(cmd, S::COMPUTE_SHADER, qp, 1) };
-            memory_barrier(&d, cmd, (S::COMPUTE_SHADER, vk::AccessFlags2::SHADER_STORAGE_WRITE), (S::HOST, vk::AccessFlags2::HOST_READ));
+            memory_barrier(
+                &d,
+                cmd,
+                (S::COMPUTE_SHADER, vk::AccessFlags2::SHADER_STORAGE_WRITE),
+                (S::HOST, vk::AccessFlags2::HOST_READ),
+            );
         });
         let gpu_ms = match (&r, self.ctx.timestamp_period_ns) {
             (Ok(()), Some(period)) => {
                 let mut t = [0u64; 2];
                 // SAFETY: the submit completed (immediate_submit waits), both queries were written.
-                unsafe { d.get_query_pool_results(qp, 0, &mut t, vk::QueryResultFlags::TYPE_64 | vk::QueryResultFlags::WAIT)? };
+                unsafe {
+                    d.get_query_pool_results(qp, 0, &mut t, vk::QueryResultFlags::TYPE_64 | vk::QueryResultFlags::WAIT)?
+                };
                 Some(t[1].saturating_sub(t[0]) as f64 * period as f64 / 1e6)
             }
             _ => None,
@@ -887,7 +994,11 @@ impl AshBackend {
         let sems = [self.timeline];
         let vals = [value];
         // SAFETY: timeline semaphore is live; `value` was (or will be) signalled by a queued submit.
-        unsafe { self.ctx.device.wait_semaphores(&vk::SemaphoreWaitInfo::default().semaphores(&sems).values(&vals), u64::MAX)? };
+        unsafe {
+            self.ctx
+                .device
+                .wait_semaphores(&vk::SemaphoreWaitInfo::default().semaphores(&sems).values(&vals), u64::MAX)?
+        };
         Ok(())
     }
 
@@ -914,7 +1025,12 @@ impl AshBackend {
             let mut t = [0u64; QUERIES as usize];
             // SAFETY: the query pool is live and all queries were written by the completed submit.
             unsafe {
-                self.ctx.device.get_query_pool_results(s.queries, 0, &mut t, vk::QueryResultFlags::TYPE_64 | vk::QueryResultFlags::WAIT)?
+                self.ctx.device.get_query_pool_results(
+                    s.queries,
+                    0,
+                    &mut t,
+                    vk::QueryResultFlags::TYPE_64 | vk::QueryResultFlags::WAIT,
+                )?
             };
             let period = period as f64;
             let ms = |a: u64, b: u64| Some(b.saturating_sub(a) as f64 * period / 1e6);
@@ -1014,19 +1130,37 @@ impl AshBackend {
         let cbi = [vk::CommandBufferSubmitInfo::default().command_buffer(self.slots[si].cmd)];
         let mut waits: Vec<vk::SemaphoreSubmitInfo> = Vec::new();
         if let Some((sem, value)) = self.gate.take() {
-            waits.push(vk::SemaphoreSubmitInfo::default().semaphore(sem).value(value).stage_mask(vk::PipelineStageFlags2::ALL_COMMANDS));
-        }
-        #[allow(unused_mut)]
-        let mut signals =
-            vec![vk::SemaphoreSubmitInfo::default().semaphore(self.timeline).value(fnum).stage_mask(vk::PipelineStageFlags2::ALL_COMMANDS)];
-        #[cfg(feature = "windowed")]
-        if let (Some(i), Some(sc)) = (image, self.swapchain.as_ref()) {
-            waits.push(vk::SemaphoreSubmitInfo::default().semaphore(sc.acquire[si]).stage_mask(vk::PipelineStageFlags2::ALL_TRANSFER));
-            signals.push(
-                vk::SemaphoreSubmitInfo::default().semaphore(sc.render_finished[i as usize]).stage_mask(vk::PipelineStageFlags2::ALL_COMMANDS),
+            waits.push(
+                vk::SemaphoreSubmitInfo::default()
+                    .semaphore(sem)
+                    .value(value)
+                    .stage_mask(vk::PipelineStageFlags2::ALL_COMMANDS),
             );
         }
-        let submit = vk::SubmitInfo2::default().command_buffer_infos(&cbi).wait_semaphore_infos(&waits).signal_semaphore_infos(&signals);
+        #[allow(unused_mut)]
+        let mut signals = vec![
+            vk::SemaphoreSubmitInfo::default()
+                .semaphore(self.timeline)
+                .value(fnum)
+                .stage_mask(vk::PipelineStageFlags2::ALL_COMMANDS),
+        ];
+        #[cfg(feature = "windowed")]
+        if let (Some(i), Some(sc)) = (image, self.swapchain.as_ref()) {
+            waits.push(
+                vk::SemaphoreSubmitInfo::default()
+                    .semaphore(sc.acquire[si])
+                    .stage_mask(vk::PipelineStageFlags2::ALL_TRANSFER),
+            );
+            signals.push(
+                vk::SemaphoreSubmitInfo::default()
+                    .semaphore(sc.render_finished[i as usize])
+                    .stage_mask(vk::PipelineStageFlags2::ALL_COMMANDS),
+            );
+        }
+        let submit = vk::SubmitInfo2::default()
+            .command_buffer_infos(&cbi)
+            .wait_semaphore_infos(&waits)
+            .signal_semaphore_infos(&signals);
         // SAFETY: cmd is fully recorded; all referenced resources belong to slot `si` (or are immutable
         // between `set_meshes` calls) and stay alive until timeline value `fnum` is reached.
         unsafe { self.ctx.device.queue_submit2(self.ctx.queue, &[submit], vk::Fence::null())? };
@@ -1076,7 +1210,10 @@ impl AshBackend {
         // producer/consumer pair has its own barrier (commented inline).
         unsafe {
             d.reset_command_pool(slot.pool, vk::CommandPoolResetFlags::empty())?;
-            d.begin_command_buffer(cmd, &vk::CommandBufferBeginInfo::default().flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT))?;
+            d.begin_command_buffer(
+                cmd,
+                &vk::CommandBufferBeginInfo::default().flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
+            )?;
             d.cmd_reset_query_pool(cmd, slot.queries, 0, QUERIES);
 
             // Terrain uploads staged since the last frame: staging ring -> vertex slots.
@@ -1085,10 +1222,18 @@ impl AshBackend {
             // and each staging range is tagged with this frame, so it is not reused before it retires.
             if let Some(t) = self.terrain.as_ref().filter(|t| !t.pending.is_empty()) {
                 let slot_bytes = t.cfg.verts_per_slot as u64 * SURFACE_VERTEX_BYTES as u64;
-                let regions: Vec<vk::BufferCopy> =
-                    t.pending.iter().map(|&(src, s, size)| vk::BufferCopy { src_offset: src, dst_offset: s as u64 * slot_bytes, size }).collect();
+                let regions: Vec<vk::BufferCopy> = t
+                    .pending
+                    .iter()
+                    .map(|&(src, s, size)| vk::BufferCopy { src_offset: src, dst_offset: s as u64 * slot_bytes, size })
+                    .collect();
                 d.cmd_copy_buffer(cmd, t.ring.buf.buffer, t.vertices.buffer, &regions);
-                memory_barrier(d, cmd, (S::COPY, A::TRANSFER_WRITE), (S::VERTEX_ATTRIBUTE_INPUT, A::VERTEX_ATTRIBUTE_READ));
+                memory_barrier(
+                    d,
+                    cmd,
+                    (S::COPY, A::TRANSFER_WRITE),
+                    (S::VERTEX_ATTRIBUTE_INPUT, A::VERTEX_ATTRIBUTE_READ),
+                );
             }
 
             // Zero per-mesh counts and the draw count.
@@ -1102,7 +1247,13 @@ impl AshBackend {
 
             // 1. Cull + count: one thread per instance.
             d.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::COMPUTE, self.pipes.cull);
-            d.cmd_push_constants(cmd, self.pipes.compute_layout, vk::ShaderStageFlags::COMPUTE, 0, bytemuck::bytes_of(&push));
+            d.cmd_push_constants(
+                cmd,
+                self.pipes.compute_layout,
+                vk::ShaderStageFlags::COMPUTE,
+                0,
+                bytemuck::bytes_of(&push),
+            );
             d.cmd_dispatch(cmd, n.div_ceil(64), 1, 1);
             // counts/slots written -> scan reads counts, scatter reads slots
             memory_barrier(d, cmd, rw, rw);
@@ -1115,7 +1266,13 @@ impl AshBackend {
             // 3. Scatter (per instance) and indirect args (per mesh). Independent writes
             //    (visible vs. draws/draw_count), shared read-only inputs: no barrier between them.
             d.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::COMPUTE, self.pipes.scatter);
-            d.cmd_push_constants(cmd, self.pipes.compute_layout, vk::ShaderStageFlags::COMPUTE, 0, bytemuck::bytes_of(&push));
+            d.cmd_push_constants(
+                cmd,
+                self.pipes.compute_layout,
+                vk::ShaderStageFlags::COMPUTE,
+                0,
+                bytemuck::bytes_of(&push),
+            );
             d.cmd_dispatch(cmd, n.div_ceil(64), 1, 1);
             d.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::COMPUTE, self.pipes.compact);
             d.cmd_dispatch(cmd, mesh_count.div_ceil(64), 1, 1);
@@ -1125,7 +1282,10 @@ impl AshBackend {
                 d,
                 cmd,
                 (S::COMPUTE_SHADER, A::SHADER_STORAGE_WRITE),
-                (S::DRAW_INDIRECT | S::VERTEX_SHADER | S::COPY, A::INDIRECT_COMMAND_READ | A::SHADER_STORAGE_READ | A::TRANSFER_READ),
+                (
+                    S::DRAW_INDIRECT | S::VERTEX_SHADER | S::COPY,
+                    A::INDIRECT_COMMAND_READ | A::SHADER_STORAGE_READ | A::TRANSFER_READ,
+                ),
             );
 
             // Attachments of this slot: discard old contents (UNDEFINED). Their last use was frame
@@ -1147,7 +1307,10 @@ impl AshBackend {
                 vk::ImageAspectFlags::DEPTH,
                 (vk::ImageLayout::UNDEFINED, vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL),
                 (S::NONE, A::NONE),
-                (S::EARLY_FRAGMENT_TESTS | S::LATE_FRAGMENT_TESTS, A::DEPTH_STENCIL_ATTACHMENT_READ | A::DEPTH_STENCIL_ATTACHMENT_WRITE),
+                (
+                    S::EARLY_FRAGMENT_TESTS | S::LATE_FRAGMENT_TESTS,
+                    A::DEPTH_STENCIL_ATTACHMENT_READ | A::DEPTH_STENCIL_ATTACHMENT_WRITE,
+                ),
             );
 
             let color_att = [vk::RenderingAttachmentInfo::default()
@@ -1165,7 +1328,11 @@ impl AshBackend {
             let area = vk::Rect2D { offset: vk::Offset2D { x: 0, y: 0 }, extent: self.extent };
             d.cmd_begin_rendering(
                 cmd,
-                &vk::RenderingInfo::default().render_area(area).layer_count(1).color_attachments(&color_att).depth_attachment(&depth_att),
+                &vk::RenderingInfo::default()
+                    .render_area(area)
+                    .layer_count(1)
+                    .color_attachments(&color_att)
+                    .depth_attachment(&depth_att),
             );
             if mesh_count > 0
                 && let (Some(vb), Some(ib)) = (&self.vertex_buf, &self.index_buf)
@@ -1183,8 +1350,22 @@ impl AshBackend {
                 d.cmd_set_scissor(cmd, 0, &[area]);
                 d.cmd_bind_vertex_buffers(cmd, 0, &[vb.buffer], &[0]);
                 d.cmd_bind_index_buffer(cmd, ib.buffer, 0, vk::IndexType::UINT32);
-                d.cmd_push_constants(cmd, self.pipes.gfx_layout, vk::ShaderStageFlags::VERTEX, 0, bytemuck::bytes_of(&push));
-                d.cmd_draw_indexed_indirect_count(cmd, slot.draws.buffer, 0, slot.draw_count.buffer, 0, mesh_count, DRAW_STRIDE);
+                d.cmd_push_constants(
+                    cmd,
+                    self.pipes.gfx_layout,
+                    vk::ShaderStageFlags::VERTEX,
+                    0,
+                    bytemuck::bytes_of(&push),
+                );
+                d.cmd_draw_indexed_indirect_count(
+                    cmd,
+                    slot.draws.buffer,
+                    0,
+                    slot.draw_count.buffer,
+                    0,
+                    mesh_count,
+                    DRAW_STRIDE,
+                );
             }
             // World-space surfaces (terrain slots, static meshes) with the surface pipeline.
             let terrain = self.terrain.as_ref().filter(|t| !t.draw.is_empty());
@@ -1200,7 +1381,13 @@ impl AshBackend {
                 };
                 d.cmd_set_viewport(cmd, 0, &[vp]);
                 d.cmd_set_scissor(cmd, 0, &[area]);
-                d.cmd_push_constants(cmd, self.pipes.gfx_layout, vk::ShaderStageFlags::VERTEX, 0, bytemuck::bytes_of(&push));
+                d.cmd_push_constants(
+                    cmd,
+                    self.pipes.gfx_layout,
+                    vk::ShaderStageFlags::VERTEX,
+                    0,
+                    bytemuck::bytes_of(&push),
+                );
                 if let Some(t) = terrain {
                     d.cmd_bind_vertex_buffers(cmd, 0, &[t.vertices.buffer], &[0]);
                     d.cmd_bind_index_buffer(cmd, t.indices.buffer, 0, vk::IndexType::UINT32);
@@ -1229,10 +1416,20 @@ impl AshBackend {
             );
 
             // Stats readback: draw count + the used draw commands -> this slot's host-visible buffer.
-            d.cmd_copy_buffer(cmd, slot.draw_count.buffer, slot.stats_buf.buffer, &[vk::BufferCopy { src_offset: 0, dst_offset: 0, size: 4 }]);
+            d.cmd_copy_buffer(
+                cmd,
+                slot.draw_count.buffer,
+                slot.stats_buf.buffer,
+                &[vk::BufferCopy { src_offset: 0, dst_offset: 0, size: 4 }],
+            );
             if mesh_count > 0 {
                 let size = mesh_count as u64 * DRAW_STRIDE as u64;
-                d.cmd_copy_buffer(cmd, slot.draws.buffer, slot.stats_buf.buffer, &[vk::BufferCopy { src_offset: 0, dst_offset: STATS_DRAWS_OFFSET, size }]);
+                d.cmd_copy_buffer(
+                    cmd,
+                    slot.draws.buffer,
+                    slot.stats_buf.buffer,
+                    &[vk::BufferCopy { src_offset: 0, dst_offset: STATS_DRAWS_OFFSET, size }],
+                );
             }
             memory_barrier(d, cmd, (S::COPY, A::TRANSFER_WRITE), (S::HOST, A::HOST_READ));
 
@@ -1263,12 +1460,32 @@ impl AshBackend {
             (S::ALL_TRANSFER, A::NONE),
             (S::ALL_TRANSFER, A::TRANSFER_WRITE),
         );
-        let layers = vk::ImageSubresourceLayers { aspect_mask: vk::ImageAspectFlags::COLOR, mip_level: 0, base_array_layer: 0, layer_count: 1 };
-        let off = |e: vk::Extent2D| [vk::Offset3D { x: 0, y: 0, z: 0 }, vk::Offset3D { x: e.width as i32, y: e.height as i32, z: 1 }];
-        let region = [vk::ImageBlit { src_subresource: layers, src_offsets: off(self.extent), dst_subresource: layers, dst_offsets: off(dst_extent) }];
+        let layers = vk::ImageSubresourceLayers {
+            aspect_mask: vk::ImageAspectFlags::COLOR,
+            mip_level: 0,
+            base_array_layer: 0,
+            layer_count: 1,
+        };
+        let off = |e: vk::Extent2D| {
+            [vk::Offset3D { x: 0, y: 0, z: 0 }, vk::Offset3D { x: e.width as i32, y: e.height as i32, z: 1 }]
+        };
+        let region = [vk::ImageBlit {
+            src_subresource: layers,
+            src_offsets: off(self.extent),
+            dst_subresource: layers,
+            dst_offsets: off(dst_extent),
+        }];
         // SAFETY: cmd recording; src is in TRANSFER_SRC_OPTIMAL (barrier in `record`), dst in TRANSFER_DST_OPTIMAL.
         unsafe {
-            d.cmd_blit_image(cmd, src, vk::ImageLayout::TRANSFER_SRC_OPTIMAL, dst, vk::ImageLayout::TRANSFER_DST_OPTIMAL, &region, vk::Filter::LINEAR)
+            d.cmd_blit_image(
+                cmd,
+                src,
+                vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                dst,
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                &region,
+                vk::Filter::LINEAR,
+            )
         };
         image_barrier(
             d,
@@ -1341,7 +1558,13 @@ impl AshBackend {
             if let Some(mut old) = self.readback.take() {
                 old.destroy(&mut self.ctx);
             }
-            self.readback = Some(GpuBuffer::new(&mut self.ctx, "readback", size, vk::BufferUsageFlags::TRANSFER_DST, MemoryLocation::GpuToCpu)?);
+            self.readback = Some(GpuBuffer::new(
+                &mut self.ctx,
+                "readback",
+                size,
+                vk::BufferUsageFlags::TRANSFER_DST,
+                MemoryLocation::GpuToCpu,
+            )?);
         }
         let rb = self.readback.as_ref().unwrap().buffer;
         let img = self.slots[self.slot_of(self.frame_number)].color.image;
@@ -1363,7 +1586,12 @@ impl AshBackend {
                 buffer_offset: 0,
                 buffer_row_length: 0,
                 buffer_image_height: 0,
-                image_subresource: vk::ImageSubresourceLayers { aspect_mask: vk::ImageAspectFlags::COLOR, mip_level: 0, base_array_layer: 0, layer_count: 1 },
+                image_subresource: vk::ImageSubresourceLayers {
+                    aspect_mask: vk::ImageAspectFlags::COLOR,
+                    mip_level: 0,
+                    base_array_layer: 0,
+                    layer_count: 1,
+                },
                 image_offset: vk::Offset3D { x: 0, y: 0, z: 0 },
                 image_extent: vk::Extent3D { width: w, height: h, depth: 1 },
             }];
@@ -1388,7 +1616,11 @@ impl RenderBackend for AshBackend {
         if self.swapchain.is_some() {
             self.extent = ext;
             return self.recreate_swapchain().and_then(|_| {
-                if self.slots.iter().any(|s| s.color.extent != self.extent) { self.recreate_targets(self.extent) } else { Ok(()) }
+                if self.slots.iter().any(|s| s.color.extent != self.extent) {
+                    self.recreate_targets(self.extent)
+                } else {
+                    Ok(())
+                }
             });
         }
         self.recreate_targets(ext)
@@ -1407,7 +1639,10 @@ impl Drop for AshBackend {
         unsafe {
             let d = &self.ctx.device;
             let p = self.pipes;
-            for pl in [p.cull, p.scan_blocks_shared, p.scan_add, p.scatter, p.compact, p.gfx, p.surface].into_iter().chain(p.scan_blocks_wave) {
+            for pl in [p.cull, p.scan_blocks_shared, p.scan_add, p.scatter, p.compact, p.gfx, p.surface]
+                .into_iter()
+                .chain(p.scan_blocks_wave)
+            {
                 d.destroy_pipeline(pl, None);
             }
             for l in [p.compute_layout, p.scan_layout, p.gfx_layout] {
@@ -1483,12 +1718,20 @@ mod tests {
         assert_eq!(plan_subgroup_scan(&base), Ok(Some(64)));
         // 256 threads at size 8 needs 32 subgroups per workgroup: allowed at exactly 32.
         assert_eq!(plan_subgroup_scan(&SubgroupInfo { max_size: 8, ..base }), Ok(Some(8)));
-        assert_eq!(plan_subgroup_scan(&SubgroupInfo { max_size: 8, max_compute_workgroup_subgroups: 16, ..base }), Ok(None));
+        assert_eq!(
+            plan_subgroup_scan(&SubgroupInfo { max_size: 8, max_compute_workgroup_subgroups: 16, ..base }),
+            Ok(None)
+        );
         // no size control: varying sizes, size-agnostic kernel
         assert_eq!(plan_subgroup_scan(&SubgroupInfo { size_control: false, ..base }), Ok(None));
         assert!(plan_subgroup_scan(&SubgroupInfo { compute_full_subgroups: false, ..base }).is_err());
-        assert!(plan_subgroup_scan(&SubgroupInfo { supported_operations: vk::SubgroupFeatureFlags::BASIC, ..base }).is_err());
-        assert!(plan_subgroup_scan(&SubgroupInfo { supported_stages: vk::ShaderStageFlags::FRAGMENT, ..base }).is_err());
+        assert!(
+            plan_subgroup_scan(&SubgroupInfo { supported_operations: vk::SubgroupFeatureFlags::BASIC, ..base })
+                .is_err()
+        );
+        assert!(
+            plan_subgroup_scan(&SubgroupInfo { supported_stages: vk::ShaderStageFlags::FRAGMENT, ..base }).is_err()
+        );
     }
 
     #[test]

@@ -53,16 +53,19 @@ pub struct FloatingOriginSystems;
 
 impl Plugin for FloatingOriginPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<FloatingState>()
-            .insert_resource(Threshold(self.threshold_m))
-            .add_systems(
-                PostUpdate,
-                (rebase_origin, sync_transforms).chain().in_set(FloatingOriginSystems).before(TransformSystems::Propagate),
-            );
+        app.init_resource::<FloatingState>().insert_resource(Threshold(self.threshold_m)).add_systems(
+            PostUpdate,
+            (rebase_origin, sync_transforms).chain().in_set(FloatingOriginSystems).before(TransformSystems::Propagate),
+        );
     }
 }
 
-fn rebase_origin(uni: Res<Universe>, th: Res<Threshold>, mut st: ResMut<FloatingState>, mut cam: Query<&mut WorldPosition, With<FloatingCamera>>) {
+fn rebase_origin(
+    uni: Res<Universe>,
+    th: Res<Threshold>,
+    mut st: ResMut<FloatingState>,
+    mut cam: Query<&mut WorldPosition, With<FloatingCamera>>,
+) {
     st.last_shift = None;
     let Ok(mut cam) = cam.single_mut() else {
         st.camera = None;
@@ -94,7 +97,12 @@ fn sync_transforms(uni: Res<Universe>, st: Res<FloatingState>, mut q: Query<(Ref
 
 /// Camera-relative translation for an instance: f64 subtraction when it has a `WorldPosition`,
 /// else (origin-relative f32) minus (camera origin-relative f32).
-pub fn camera_relative(uni: Option<&Universe>, st: Option<&FloatingState>, wp: Option<&WorldPosition>, global: Vec3) -> Vec3 {
+pub fn camera_relative(
+    uni: Option<&Universe>,
+    st: Option<&FloatingState>,
+    wp: Option<&WorldPosition>,
+    global: Vec3,
+) -> Vec3 {
     let (Some(uni), Some(st)) = (uni, st) else { return global };
     let (Some(cam), Some(fo)) = (st.camera, st.origin) else { return global };
     match wp {

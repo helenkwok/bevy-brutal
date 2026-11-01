@@ -165,7 +165,11 @@ struct QCullFrameGpu {
     views: [QViewGpu; MAX_VIEWS],
 }
 const _: () = assert!(size_of::<QViewGpu>() == 112 && size_of::<QCullFrameGpu>() == 640);
-const PUSH_STAGES: vk::ShaderStageFlags = vk::ShaderStageFlags::from_raw(vk::ShaderStageFlags::VERTEX.as_raw() | vk::ShaderStageFlags::FRAGMENT.as_raw() | vk::ShaderStageFlags::COMPUTE.as_raw());
+const PUSH_STAGES: vk::ShaderStageFlags = vk::ShaderStageFlags::from_raw(
+    vk::ShaderStageFlags::VERTEX.as_raw()
+        | vk::ShaderStageFlags::FRAGMENT.as_raw()
+        | vk::ShaderStageFlags::COMPUTE.as_raw(),
+);
 
 /// Reverse-Z infinite perspective, Vulkan clip conventions (NDC y down, z in (0, 1], near -> 1).
 pub fn reverse_z_infinite(fov_y: f32, aspect: f32, near: f32) -> Mat4 {
@@ -176,7 +180,24 @@ pub fn reverse_z_infinite(fov_y: f32, aspect: f32, near: f32) -> Mat4 {
 /// Orthographic projection, Vulkan clip conventions, z in [0, 1] over [near, far] (LESS).
 pub fn vk_ortho(half_w: f32, half_h: f32, near: f32, far: f32) -> Mat4 {
     let d = far - near;
-    Mat4::from_cols_array(&[1.0 / half_w, 0.0, 0.0, 0.0, 0.0, -1.0 / half_h, 0.0, 0.0, 0.0, 0.0, -1.0 / d, 0.0, 0.0, 0.0, -near / d, 1.0])
+    Mat4::from_cols_array(&[
+        1.0 / half_w,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.0 / half_h,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.0 / d,
+        0.0,
+        0.0,
+        0.0,
+        -near / d,
+        1.0,
+    ])
 }
 
 /// Light-space depth grid (m) the cascade centre snaps to along the sun direction (so a
@@ -190,12 +211,24 @@ pub const CASCADE_DEPTH_SNAP: f64 = 16.0;
 /// same world-space light matrix, so a cached shadow map of static casters stays valid
 /// ([`QualityFrame::shadow_cache_keys`]). The radius is closed-form (rotation-invariant).
 #[allow(clippy::too_many_arguments)] // flat math helper: camera frustum slice + light + map size
-pub fn sun_cascade(origin: glam::DVec3, cam_fwd: Vec3, fov_y: f32, aspect: f32, n: f32, f: f32, sun: Vec3, res: u32, depth_back: f32) -> (Mat4, f32, [i64; 3]) {
+pub fn sun_cascade(
+    origin: glam::DVec3,
+    cam_fwd: Vec3,
+    fov_y: f32,
+    aspect: f32,
+    n: f32,
+    f: f32,
+    sun: Vec3,
+    res: u32,
+    depth_back: f32,
+) -> (Mat4, f32, [i64; 3]) {
     let t = (fov_y * 0.5).tan() as f64;
     let (n64, f64_) = (n as f64, f as f64);
     // bounding sphere of the slice: centre on the axis at the corner-centroid, radius to the far corners
     let cd = 0.5 * (n64 + f64_);
-    let rad = (((f64_ - cd) * (f64_ - cd)) + (t * f64_) * (t * f64_) * (1.0 + (aspect as f64) * (aspect as f64))).sqrt().max(((cd - n64) * (cd - n64) + (t * n64) * (t * n64) * (1.0 + (aspect as f64) * (aspect as f64))).sqrt());
+    let rad = (((f64_ - cd) * (f64_ - cd)) + (t * f64_) * (t * f64_) * (1.0 + (aspect as f64) * (aspect as f64)))
+        .sqrt()
+        .max(((cd - n64) * (cd - n64) + (t * n64) * (t * n64) * (1.0 + (aspect as f64) * (aspect as f64))).sqrt());
     let c = cam_fwd.as_dvec3() * cd;
     let rad32 = rad as f32;
     let texel = 2.0 * rad32 / res as f32;
@@ -206,7 +239,11 @@ pub fn sun_cascade(origin: glam::DVec3, cam_fwd: Vec3, fov_y: f32, aspect: f32, 
     let (rx, ry, rz) = (row(0), row(1), row(2));
     let w = origin + c;
     let tx = texel as f64;
-    let cell = [(rx.dot(w) / tx).round() as i64, (ry.dot(w) / tx).round() as i64, (rz.dot(w) / CASCADE_DEPTH_SNAP).round() as i64];
+    let cell = [
+        (rx.dot(w) / tx).round() as i64,
+        (ry.dot(w) / tx).round() as i64,
+        (rz.dot(w) / CASCADE_DEPTH_SNAP).round() as i64,
+    ];
     let cw = rx * (cell[0] as f64 * tx) + ry * (cell[1] as f64 * tx) + rz * (cell[2] as f64 * CASCADE_DEPTH_SNAP);
     let centre = (cw - origin).as_vec3();
     let eye = centre + sun * (rad32 + depth_back);
@@ -223,7 +260,14 @@ pub fn sun_cascade(origin: glam::DVec3, cam_fwd: Vec3, fov_y: f32, aspect: f32, 
 /// `g = 2 R grid / res`. Returns (camera-relative view-projection, texel m, cell). At wide
 /// aspect ratios this is no larger than [`sun_cascade`]'s slice sphere: at 16:9 and 60 deg
 /// FOV the slice radius is ~1.2 f, here 1.14 f with `grid = res / 8`.
-pub fn sun_cascade_clip(cam: glam::DVec3, f: f32, sun: Vec3, res: u32, depth_back: f32, grid: u32) -> (Mat4, f32, [i64; 3]) {
+pub fn sun_cascade_clip(
+    cam: glam::DVec3,
+    f: f32,
+    sun: Vec3,
+    res: u32,
+    depth_back: f32,
+    grid: u32,
+) -> (Mat4, f32, [i64; 3]) {
     let k = grid.min(res / 2) as f64 / res as f64;
     let rad = f as f64 / (1.0 - k);
     let texel = 2.0 * rad / res as f64;
@@ -286,7 +330,11 @@ pub fn terrain_chunks(vertices: &[QVertex], indices: &[u32], base: f32) -> (Vec<
             }
         }
         let c = (lo + hi) * 0.5;
-        chunks.push(TerrainChunk { first_index: first, index_count: out.len() as u32 - first, sphere: [c.x, c.y, c.z, (hi - lo).length() * 0.5 * 1.001 + 0.01] });
+        chunks.push(TerrainChunk {
+            first_index: first,
+            index_count: out.len() as u32 - first,
+            sphere: [c.x, c.y, c.z, (hi - lo).length() * 0.5 * 1.001 + 0.01],
+        });
     }
     (out, chunks)
 }
@@ -305,9 +353,18 @@ pub fn cull_chunks(chunks: &[TerrainChunk], planes: &[glam::Vec4; 6]) -> Vec<(u3
 /// cascade's receiver slice `slice` (camera frustum between the split distances). Without
 /// the sweep test the far cascades' bounding boxes take in the whole dense near field.
 /// Conservative: the sweep is sampled every `len / 16` with the sphere inflated by that step.
-pub fn cull_casters(chunks: &[TerrainChunk], planes: &[glam::Vec4; 6], slice: &[glam::Vec4; 6], sun: Vec3, len: f32) -> Vec<(u32, u32)> {
+pub fn cull_casters(
+    chunks: &[TerrainChunk],
+    planes: &[glam::Vec4; 6],
+    slice: &[glam::Vec4; 6],
+    sun: Vec3,
+    len: f32,
+) -> Vec<(u32, u32)> {
     let step = len / 16.0;
-    cull_chunks_by(chunks, |p, r| sphere_in(planes, p, r) && (0..=16).any(|k| sphere_in(slice, p - sun * (k as f32 * step), r + step * 0.5 + 1e-3)))
+    cull_chunks_by(chunks, |p, r| {
+        sphere_in(planes, p, r)
+            && (0..=16).any(|k| sphere_in(slice, p - sun * (k as f32 * step), r + step * 0.5 + 1e-3))
+    })
 }
 
 fn cull_chunks_by(chunks: &[TerrainChunk], keep: impl Fn(Vec3, f32) -> bool) -> Vec<(u32, u32)> {
@@ -506,21 +563,39 @@ fn pipeline(d: &ash::Device, layout: vk::PipelineLayout, kind: Kind, eq: bool) -
             Some(s) => Some(shader_module(d, s)?),
             None => None,
         };
-        let mut stages = vec![vk::PipelineShaderStageCreateInfo::default().stage(vk::ShaderStageFlags::VERTEX).module(vs).name(c"main")];
+        let mut stages = vec![
+            vk::PipelineShaderStageCreateInfo::default().stage(vk::ShaderStageFlags::VERTEX).module(vs).name(c"main"),
+        ];
         if let Some(fs) = fs {
-            stages.push(vk::PipelineShaderStageCreateInfo::default().stage(vk::ShaderStageFlags::FRAGMENT).module(fs).name(c"main"));
+            stages.push(
+                vk::PipelineShaderStageCreateInfo::default()
+                    .stage(vk::ShaderStageFlags::FRAGMENT)
+                    .module(fs)
+                    .name(c"main"),
+            );
         }
         let vi = vk::PipelineVertexInputStateCreateInfo::default();
         let ia = vk::PipelineInputAssemblyStateCreateInfo::default().topology(vk::PrimitiveTopology::TRIANGLE_LIST);
         let vp = vk::PipelineViewportStateCreateInfo::default().viewport_count(1).scissor_count(1);
         let rs = match kind {
             Kind::Terrain => vk::PipelineRasterizationStateCreateInfo::default().cull_mode(vk::CullModeFlags::BACK),
-            Kind::Inst | Kind::InstFade | Kind::PreInst | Kind::PreInstAlpha | Kind::Imp | Kind::ImpFar | Kind::ImpShadow | Kind::ImpShadowFar | Kind::PreImp | Kind::ImpEq => vk::PipelineRasterizationStateCreateInfo::default().cull_mode(vk::CullModeFlags::NONE),
-            Kind::Shadow | Kind::InstShadow | Kind::InstShadowAlpha => vk::PipelineRasterizationStateCreateInfo::default()
-                .cull_mode(vk::CullModeFlags::NONE)
-                .depth_bias_enable(true)
-                .depth_bias_constant_factor(2.0)
-                .depth_bias_slope_factor(2.5),
+            Kind::Inst
+            | Kind::InstFade
+            | Kind::PreInst
+            | Kind::PreInstAlpha
+            | Kind::Imp
+            | Kind::ImpFar
+            | Kind::ImpShadow
+            | Kind::ImpShadowFar
+            | Kind::PreImp
+            | Kind::ImpEq => vk::PipelineRasterizationStateCreateInfo::default().cull_mode(vk::CullModeFlags::NONE),
+            Kind::Shadow | Kind::InstShadow | Kind::InstShadowAlpha => {
+                vk::PipelineRasterizationStateCreateInfo::default()
+                    .cull_mode(vk::CullModeFlags::NONE)
+                    .depth_bias_enable(true)
+                    .depth_bias_constant_factor(2.0)
+                    .depth_bias_slope_factor(2.5)
+            }
             Kind::Sky => vk::PipelineRasterizationStateCreateInfo::default().cull_mode(vk::CullModeFlags::NONE),
         }
         .polygon_mode(vk::PolygonMode::FILL)
@@ -528,15 +603,54 @@ fn pipeline(d: &ash::Device, layout: vk::PipelineLayout, kind: Kind, eq: bool) -
         .line_width(1.0);
         let ms = vk::PipelineMultisampleStateCreateInfo::default().rasterization_samples(vk::SampleCountFlags::TYPE_1);
         let ds = match kind {
-            Kind::ImpEq => vk::PipelineDepthStencilStateCreateInfo::default().depth_test_enable(true).depth_write_enable(false).depth_compare_op(vk::CompareOp::EQUAL),
-            Kind::Inst | Kind::InstFade if eq => vk::PipelineDepthStencilStateCreateInfo::default().depth_test_enable(true).depth_write_enable(false).depth_compare_op(vk::CompareOp::EQUAL),
-            Kind::Terrain | Kind::Inst | Kind::InstFade | Kind::Imp | Kind::ImpFar | Kind::PreInst | Kind::PreInstAlpha | Kind::PreImp => vk::PipelineDepthStencilStateCreateInfo::default().depth_test_enable(true).depth_write_enable(true).depth_compare_op(vk::CompareOp::GREATER),
-            Kind::Shadow | Kind::InstShadow | Kind::InstShadowAlpha | Kind::ImpShadow | Kind::ImpShadowFar => vk::PipelineDepthStencilStateCreateInfo::default().depth_test_enable(true).depth_write_enable(true).depth_compare_op(vk::CompareOp::LESS),
-            Kind::Sky => vk::PipelineDepthStencilStateCreateInfo::default().depth_test_enable(true).depth_write_enable(false).depth_compare_op(vk::CompareOp::GREATER_OR_EQUAL),
+            Kind::ImpEq => vk::PipelineDepthStencilStateCreateInfo::default()
+                .depth_test_enable(true)
+                .depth_write_enable(false)
+                .depth_compare_op(vk::CompareOp::EQUAL),
+            Kind::Inst | Kind::InstFade if eq => vk::PipelineDepthStencilStateCreateInfo::default()
+                .depth_test_enable(true)
+                .depth_write_enable(false)
+                .depth_compare_op(vk::CompareOp::EQUAL),
+            Kind::Terrain
+            | Kind::Inst
+            | Kind::InstFade
+            | Kind::Imp
+            | Kind::ImpFar
+            | Kind::PreInst
+            | Kind::PreInstAlpha
+            | Kind::PreImp => vk::PipelineDepthStencilStateCreateInfo::default()
+                .depth_test_enable(true)
+                .depth_write_enable(true)
+                .depth_compare_op(vk::CompareOp::GREATER),
+            Kind::Shadow | Kind::InstShadow | Kind::InstShadowAlpha | Kind::ImpShadow | Kind::ImpShadowFar => {
+                vk::PipelineDepthStencilStateCreateInfo::default()
+                    .depth_test_enable(true)
+                    .depth_write_enable(true)
+                    .depth_compare_op(vk::CompareOp::LESS)
+            }
+            Kind::Sky => vk::PipelineDepthStencilStateCreateInfo::default()
+                .depth_test_enable(true)
+                .depth_write_enable(false)
+                .depth_compare_op(vk::CompareOp::GREATER_OR_EQUAL),
         };
         let blend = [vk::PipelineColorBlendAttachmentState::default().color_write_mask(vk::ColorComponentFlags::RGBA)];
-        let depth_only = matches!(kind, Kind::Shadow | Kind::InstShadow | Kind::InstShadowAlpha | Kind::ImpShadow | Kind::ImpShadowFar | Kind::PreInst | Kind::PreInstAlpha | Kind::PreImp);
-        let cb = vk::PipelineColorBlendStateCreateInfo::default().attachments(if depth_only { &[] } else { &blend });
+        // Shadow passes render with no colour attachment at all.
+        let depth_only = matches!(
+            kind,
+            Kind::Shadow | Kind::InstShadow | Kind::InstShadowAlpha | Kind::ImpShadow | Kind::ImpShadowFar
+        );
+        // The depth prepass draws inside the main pass, which has one colour attachment: without
+        // dynamicRenderingUnusedAttachments the pipeline must declare that attachment too
+        // (VUID-vkCmdDrawIndexedIndirect-colorAttachmentCount-06179), so keep it with writes masked off.
+        let prepass = matches!(kind, Kind::PreInst | Kind::PreInstAlpha | Kind::PreImp);
+        let no_writes =
+            [vk::PipelineColorBlendAttachmentState::default().color_write_mask(vk::ColorComponentFlags::empty())];
+        let attachments: &[vk::PipelineColorBlendAttachmentState] = match (depth_only, prepass) {
+            (true, _) => &[],
+            (false, true) => &no_writes,
+            (false, false) => &blend,
+        };
+        let cb = vk::PipelineColorBlendStateCreateInfo::default().attachments(attachments);
         let dyns = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
         let dy = vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dyns);
         let color_formats = [COLOR];
@@ -566,13 +680,11 @@ fn pipeline(d: &ash::Device, layout: vk::PipelineLayout, kind: Kind, eq: bool) -
 }
 
 fn pipes(d: &ash::Device, eq: bool) -> Result<Pipes, BackendError> {
-    let range = [vk::PushConstantRange {
-        stage_flags: PUSH_STAGES,
-        offset: 0,
-        size: size_of::<QPushGpu>() as u32,
-    }];
+    let range = [vk::PushConstantRange { stage_flags: PUSH_STAGES, offset: 0, size: size_of::<QPushGpu>() as u32 }];
     // SAFETY: device valid.
-    let layout = unsafe { d.create_pipeline_layout(&vk::PipelineLayoutCreateInfo::default().push_constant_ranges(&range), None)? };
+    let layout = unsafe {
+        d.create_pipeline_layout(&vk::PipelineLayoutCreateInfo::default().push_constant_ranges(&range), None)?
+    };
     Ok(Pipes {
         layout,
         terrain: pipeline(d, layout, Kind::Terrain, eq)?,
@@ -600,7 +712,12 @@ fn compute_pipeline(d: &ash::Device, layout: vk::PipelineLayout, spv: &[u8]) -> 
     unsafe {
         let m = shader_module(d, spv)?;
         let ci = vk::ComputePipelineCreateInfo::default()
-            .stage(vk::PipelineShaderStageCreateInfo::default().stage(vk::ShaderStageFlags::COMPUTE).module(m).name(c"main"))
+            .stage(
+                vk::PipelineShaderStageCreateInfo::default()
+                    .stage(vk::ShaderStageFlags::COMPUTE)
+                    .module(m)
+                    .name(c"main"),
+            )
             .layout(layout);
         let r = d.create_compute_pipelines(vk::PipelineCache::null(), &[ci], None).map_err(|(_, e)| e);
         d.destroy_shader_module(m, None);
@@ -618,7 +735,13 @@ impl AshBackend {
             b.destroy(&mut self.ctx);
         }
         let sda = vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS | vk::BufferUsageFlags::STORAGE_BUFFER;
-        let mut b = GpuBuffer::new(&mut self.ctx, "q_ground", size_of_val(words).max(16) as u64, sda, MemoryLocation::CpuToGpu)?;
+        let mut b = GpuBuffer::new(
+            &mut self.ctx,
+            "q_ground",
+            size_of_val(words).max(16) as u64,
+            sda,
+            MemoryLocation::CpuToGpu,
+        )?;
         b.mapped_mut()[..size_of_val(words)].copy_from_slice(bytemuck::cast_slice(words));
         let a = b.address;
         self.qground = Some(b);
@@ -642,11 +765,19 @@ impl AshBackend {
             params.cascade_vp[i] = s.view_proj.to_cols_array_2d();
             params.texel[i] = s.texel;
         }
-        let mut vb = GpuBuffer::new(&mut self.ctx, "q_vertices", size_of_val(f.vertices) as u64, sda, MemoryLocation::CpuToGpu)?;
+        let mut vb =
+            GpuBuffer::new(&mut self.ctx, "q_vertices", size_of_val(f.vertices) as u64, sda, MemoryLocation::CpuToGpu)?;
         vb.mapped_mut()[..size_of_val(f.vertices)].copy_from_slice(bytemuck::cast_slice(f.vertices));
-        let mut ib = GpuBuffer::new(&mut self.ctx, "q_indices", size_of_val(f.indices) as u64, vk::BufferUsageFlags::INDEX_BUFFER, MemoryLocation::CpuToGpu)?;
+        let mut ib = GpuBuffer::new(
+            &mut self.ctx,
+            "q_indices",
+            size_of_val(f.indices) as u64,
+            vk::BufferUsageFlags::INDEX_BUFFER,
+            MemoryLocation::CpuToGpu,
+        )?;
         ib.mapped_mut()[..size_of_val(f.indices)].copy_from_slice(bytemuck::cast_slice(f.indices));
-        let mut pb = GpuBuffer::new(&mut self.ctx, "q_params", size_of::<QParamsGpu>() as u64, sda, MemoryLocation::CpuToGpu)?;
+        let mut pb =
+            GpuBuffer::new(&mut self.ctx, "q_params", size_of::<QParamsGpu>() as u64, sda, MemoryLocation::CpuToGpu)?;
         pb.mapped_mut()[..size_of::<QParamsGpu>()].copy_from_slice(bytemuck::bytes_of(&params));
         let res = f.shadow_res;
         let smap_bytes = res as u64 * res as u64 * 4;
@@ -657,7 +788,16 @@ impl AshBackend {
                 if let Some(c) = other {
                     c.destroy(&mut self.ctx);
                 }
-                (GpuBuffer::new(&mut self.ctx, "q_shadow", smap_bytes * f.shadows.len() as u64, sda | vk::BufferUsageFlags::TRANSFER_DST, MemoryLocation::GpuOnly)?, [0; 4])
+                (
+                    GpuBuffer::new(
+                        &mut self.ctx,
+                        "q_shadow",
+                        smap_bytes * f.shadows.len() as u64,
+                        sda | vk::BufferUsageFlags::TRANSFER_DST,
+                        MemoryLocation::GpuOnly,
+                    )?,
+                    [0; 4],
+                )
             }
         };
         let key = |c: usize| f.shadow_cache_keys.get(c).copied().unwrap_or(0);
@@ -672,29 +812,68 @@ impl AshBackend {
             vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT | vk::ImageUsageFlags::TRANSFER_SRC,
             vk::ImageAspectFlags::DEPTH,
         )?;
-        let mut color = GpuImage::new(&mut self.ctx, "q_color", ext, COLOR, vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::TRANSFER_SRC, vk::ImageAspectFlags::COLOR)?;
-        let mut depth = GpuImage::new(&mut self.ctx, "q_depth", ext, DEPTH, vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT, vk::ImageAspectFlags::DEPTH)?;
+        let mut color = GpuImage::new(
+            &mut self.ctx,
+            "q_color",
+            ext,
+            COLOR,
+            vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::TRANSFER_SRC,
+            vk::ImageAspectFlags::COLOR,
+        )?;
+        let mut depth = GpuImage::new(
+            &mut self.ctx,
+            "q_depth",
+            ext,
+            DEPTH,
+            vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
+            vk::ImageAspectFlags::DEPTH,
+        )?;
         let rb_bytes = f.width as u64 * f.height as u64 * 4;
-        let rb = GpuBuffer::new(&mut self.ctx, "q_readback", rb_bytes, vk::BufferUsageFlags::TRANSFER_DST, MemoryLocation::GpuToCpu)?;
+        let rb = GpuBuffer::new(
+            &mut self.ctx,
+            "q_readback",
+            rb_bytes,
+            vk::BufferUsageFlags::TRANSFER_DST,
+            MemoryLocation::GpuToCpu,
+        )?;
         let inst = match &f.instanced {
             Some(set) if !set.instances.is_empty() && !set.meshes.is_empty() => {
                 // views: the camera (distance LOD + crossfade), then each sun cascade: the two
                 // nearest switch LOD by distance (no crossfade), the far ones draw the coarsest
                 // level (impostors)
-                let mut views = vec![QViewGpu { planes: crate::cull::frustum_planes(set.cull_view_proj).map(|p| p.to_array()), mode: 0, lod_scale: 1.0, _p: [0; 2] }];
+                let mut views = vec![QViewGpu {
+                    planes: crate::cull::frustum_planes(set.cull_view_proj).map(|p| p.to_array()),
+                    mode: 0,
+                    lod_scale: 1.0,
+                    _p: [0; 2],
+                }];
                 if !f.spot_shadow {
                     for (c, sv) in f.shadows.iter().enumerate() {
-                        views.push(QViewGpu { planes: crate::cull::frustum_planes(sv.view_proj).map(|p| p.to_array()), mode: if c < 2 { 1 } else { 2 }, lod_scale: if c == 1 { 2.0 } else { 1.0 }, _p: [0; 2] });
+                        views.push(QViewGpu {
+                            planes: crate::cull::frustum_planes(sv.view_proj).map(|p| p.to_array()),
+                            mode: if c < 2 { 1 } else { 2 },
+                            lod_scale: if c == 1 { 2.0 } else { 1.0 },
+                            _p: [0; 2],
+                        });
                     }
                 }
                 Some(InstBufs::new(&mut self.ctx, set, &views)?)
             }
             _ => None,
         };
-        let atmo = if f.atmosphere { Some(GpuBuffer::new(&mut self.ctx, "q_atmo", ATMO_FLOAT4S * 16, sda, MemoryLocation::GpuOnly)?) } else { None };
+        let atmo = if f.atmosphere {
+            Some(GpuBuffer::new(&mut self.ctx, "q_atmo", ATMO_FLOAT4S * 16, sda, MemoryLocation::GpuOnly)?)
+        } else {
+            None
+        };
         let atmo_addr = atmo.as_ref().map_or(0, |b| b.address);
         // SAFETY: device valid.
-        let qp = unsafe { d.create_query_pool(&vk::QueryPoolCreateInfo::default().query_type(vk::QueryType::TIMESTAMP).query_count(MAX_MARKS), None)? };
+        let qp = unsafe {
+            d.create_query_pool(
+                &vk::QueryPoolCreateInfo::default().query_type(vk::QueryType::TIMESTAMP).query_count(MAX_MARKS),
+                None,
+            )?
+        };
         let marks = std::cell::RefCell::new(Vec::<&'static str>::new());
         // SAFETY (callers): cmd recording; at most MAX_MARKS - 1 marks per frame.
         let mark = |cmd: vk::CommandBuffer, label: &'static str| {
@@ -705,10 +884,25 @@ impl AshBackend {
             unsafe { d.cmd_write_timestamp2(cmd, vk::PipelineStageFlags2::ALL_COMMANDS, qp, m.len() as u32) };
         };
 
-        let (inst_addr, vis_addr, inst_vb) = inst.as_ref().map_or((0, 0, 0), |i| (i.inst.address, i.visible.address, i.vb.address));
-        let (imp_addr, imp_tex) = inst.as_ref().and_then(|i| i.atlas.as_ref().map(|a| (a.address, a.address + i.atlas_header))).unwrap_or((0, 0));
+        let (inst_addr, vis_addr, inst_vb) =
+            inst.as_ref().map_or((0, 0, 0), |i| (i.inst.address, i.visible.address, i.vb.address));
+        let (imp_addr, imp_tex) = inst
+            .as_ref()
+            .and_then(|i| i.atlas.as_ref().map(|a| (a.address, a.address + i.atlas_header)))
+            .unwrap_or((0, 0));
         let push_v = |cmd: vk::CommandBuffer, cascade: u32, v: u64| {
-            let pc = QPushGpu { p: pb.address, v, shadow: sb.address, cascade, pad: 0, inst: inst_addr, visible: vis_addr, atmo: atmo_addr, imp: imp_addr, imp_tex };
+            let pc = QPushGpu {
+                p: pb.address,
+                v,
+                shadow: sb.address,
+                cascade,
+                pad: 0,
+                inst: inst_addr,
+                visible: vis_addr,
+                atmo: atmo_addr,
+                imp: imp_addr,
+                imp_tex,
+            };
             // SAFETY: cmd recording; layout declares this range for these stages.
             unsafe { d.cmd_push_constants(cmd, p.layout, PUSH_STAGES, 0, bytemuck::bytes_of(&pc)) };
         };
@@ -727,7 +921,9 @@ impl AshBackend {
                 // draws were written by the cull chain (barrier recorded); multiDrawIndirect is enabled.
                 unsafe {
                     d.cmd_bind_index_buffer(cmd, i.ib.buffer, 0, vk::IndexType::UINT32);
-                    for (bit, pipe, first, count) in [(1, pipes[0], 0, k), (1, pipes[1], m, k), (2, pipes[2], k, m - k), (2, pipes[3], m + k, m - k)] {
+                    for (bit, pipe, first, count) in
+                        [(1, pipes[0], 0, k), (1, pipes[1], m, k), (2, pipes[2], k, m - k), (2, pipes[3], m + k, m - k)]
+                    {
                         if count == 0 || ranges & bit == 0 {
                             continue;
                         }
@@ -740,14 +936,36 @@ impl AshBackend {
             }
         };
         let push = |cmd: vk::CommandBuffer, cascade: u32| {
-            let pc = QPushGpu { p: pb.address, v: vb.address, shadow: sb.address, cascade, pad: 0, inst: inst_addr, visible: vis_addr, atmo: atmo_addr, imp: imp_addr, imp_tex };
+            let pc = QPushGpu {
+                p: pb.address,
+                v: vb.address,
+                shadow: sb.address,
+                cascade,
+                pad: 0,
+                inst: inst_addr,
+                visible: vis_addr,
+                atmo: atmo_addr,
+                imp: imp_addr,
+                imp_tex,
+            };
             // SAFETY: cmd recording; layout declares this range for these stages.
             unsafe { d.cmd_push_constants(cmd, p.layout, PUSH_STAGES, 0, bytemuck::bytes_of(&pc)) };
         };
         let viewport = |cmd: vk::CommandBuffer, e: vk::Extent2D| {
             // SAFETY: cmd recording, dynamic viewport/scissor declared.
             unsafe {
-                d.cmd_set_viewport(cmd, 0, &[vk::Viewport { x: 0.0, y: 0.0, width: e.width as f32, height: e.height as f32, min_depth: 0.0, max_depth: 1.0 }]);
+                d.cmd_set_viewport(
+                    cmd,
+                    0,
+                    &[vk::Viewport {
+                        x: 0.0,
+                        y: 0.0,
+                        width: e.width as f32,
+                        height: e.height as f32,
+                        min_depth: 0.0,
+                        max_depth: 1.0,
+                    }],
+                );
                 d.cmd_set_scissor(cmd, 0, &[vk::Rect2D { offset: vk::Offset2D::default(), extent: e }]);
             }
         };
@@ -761,7 +979,13 @@ impl AshBackend {
             .map(|(c, sv)| {
                 let planes = crate::cull::frustum_planes(sv.view_proj);
                 match f.shadow_slices.get(c) {
-                    Some(&slice) if !f.spot_shadow => cull_casters(f.terrain_chunks, &planes, &crate::cull::frustum_planes(slice), sun, SHADOW_SWEEP_M),
+                    Some(&slice) if !f.spot_shadow => cull_casters(
+                        f.terrain_chunks,
+                        &planes,
+                        &crate::cull::frustum_planes(slice),
+                        sun,
+                        SHADOW_SWEEP_M,
+                    ),
                     _ => cull_chunks(f.terrain_chunks, &planes),
                 }
             })
@@ -792,7 +1016,15 @@ impl AshBackend {
                     d.cmd_dispatch(cmd, i.n.div_ceil(64), i.views, 1);
                     d.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::COMPUTE, p.qcull[2]);
                     d.cmd_dispatch(cmd, vm.div_ceil(64), 1, 1);
-                    memory_barrier(&d, cmd, rw, (S::DRAW_INDIRECT | S::VERTEX_SHADER | S::FRAGMENT_SHADER | S::COPY, A::INDIRECT_COMMAND_READ | A::SHADER_STORAGE_READ | A::TRANSFER_READ));
+                    memory_barrier(
+                        &d,
+                        cmd,
+                        rw,
+                        (
+                            S::DRAW_INDIRECT | S::VERTEX_SHADER | S::FRAGMENT_SHADER | S::COPY,
+                            A::INDIRECT_COMMAND_READ | A::SHADER_STORAGE_READ | A::TRANSFER_READ,
+                        ),
+                    );
                     mark(cmd, "instance cull+lod");
                 }
                 if atmo.is_some() {
@@ -807,13 +1039,22 @@ impl AshBackend {
                         d.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::COMPUTE, pipe);
                         d.cmd_dispatch(cmd, gx, gy, 1);
                     }
-                    memory_barrier(&d, cmd, (S::COMPUTE_SHADER, A::SHADER_STORAGE_WRITE), (S::FRAGMENT_SHADER | S::VERTEX_SHADER, A::SHADER_STORAGE_READ));
+                    memory_barrier(
+                        &d,
+                        cmd,
+                        (S::COMPUTE_SHADER, A::SHADER_STORAGE_WRITE),
+                        (S::FRAGMENT_SHADER | S::VERTEX_SHADER, A::SHADER_STORAGE_READ),
+                    );
                     mark(cmd, "atmosphere luts");
                 }
                 d.cmd_bind_index_buffer(cmd, ib.buffer, 0, vk::IndexType::UINT32);
                 for c in 0..f.shadows.len() as u32 {
                     if reuse[c as usize] {
-                        mark(cmd, ["shadow c0 cached", "shadow c1 cached", "shadow c2 cached", "shadow c3 cached"][c as usize]);
+                        mark(
+                            cmd,
+                            ["shadow c0 cached", "shadow c1 cached", "shadow c2 cached", "shadow c3 cached"]
+                                [c as usize],
+                        );
                         continue;
                     }
                     image_barrier(
@@ -823,15 +1064,23 @@ impl AshBackend {
                         vk::ImageAspectFlags::DEPTH,
                         (vk::ImageLayout::UNDEFINED, vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL),
                         (S::COPY, A::TRANSFER_READ),
-                        (S::EARLY_FRAGMENT_TESTS | S::LATE_FRAGMENT_TESTS, A::DEPTH_STENCIL_ATTACHMENT_WRITE | A::DEPTH_STENCIL_ATTACHMENT_READ),
+                        (
+                            S::EARLY_FRAGMENT_TESTS | S::LATE_FRAGMENT_TESTS,
+                            A::DEPTH_STENCIL_ATTACHMENT_WRITE | A::DEPTH_STENCIL_ATTACHMENT_READ,
+                        ),
                     );
                     let datt = vk::RenderingAttachmentInfo::default()
                         .image_view(simg.view)
                         .image_layout(vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL)
                         .load_op(vk::AttachmentLoadOp::CLEAR)
                         .store_op(vk::AttachmentStoreOp::STORE)
-                        .clear_value(vk::ClearValue { depth_stencil: vk::ClearDepthStencilValue { depth: 1.0, stencil: 0 } });
-                    let ri = vk::RenderingInfo::default().render_area(vk::Rect2D { offset: vk::Offset2D::default(), extent: sext }).layer_count(1).depth_attachment(&datt);
+                        .clear_value(vk::ClearValue {
+                            depth_stencil: vk::ClearDepthStencilValue { depth: 1.0, stencil: 0 },
+                        });
+                    let ri = vk::RenderingInfo::default()
+                        .render_area(vk::Rect2D { offset: vk::Offset2D::default(), extent: sext })
+                        .layer_count(1)
+                        .depth_attachment(&datt);
                     d.cmd_begin_rendering(cmd, &ri);
                     d.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, p.shadow);
                     viewport(cmd, sext);
@@ -843,14 +1092,26 @@ impl AshBackend {
                             d.cmd_draw_indexed(cmd, count, 1, first, 0, 0);
                         }
                     }
-                    mark(cmd, ["shadow c0 terrain", "shadow c1 terrain", "shadow c2 terrain", "shadow c3 terrain"][c as usize]);
+                    mark(
+                        cmd,
+                        ["shadow c0 terrain", "shadow c1 terrain", "shadow c2 terrain", "shadow c3 terrain"]
+                            [c as usize],
+                    );
                     if !f.spot_shadow {
                         // near cascades: exact-depth impostor casters (beyond the mesh LOD range); far
                         // cascades: coverage-only cards
                         let ip = if c < 2 { p.imp_shadow } else { p.imp_shadow_far };
                         // class-1 mesh slots in shadow views = alpha-tested casters (needle cards)
                         draw_inst(cmd, [p.inst_shadow, p.inst_shadow_alpha, ip, ip], c, 1 + c, 3);
-                        mark(cmd, ["shadow c0 instances", "shadow c1 instances", "shadow c2 instances", "shadow c3 instances"][c as usize]);
+                        mark(
+                            cmd,
+                            [
+                                "shadow c0 instances",
+                                "shadow c1 instances",
+                                "shadow c2 instances",
+                                "shadow c3 instances",
+                            ][c as usize],
+                        );
                     }
                     d.cmd_end_rendering(cmd);
                     image_barrier(
@@ -866,11 +1127,22 @@ impl AshBackend {
                         buffer_offset: c as u64 * smap_bytes,
                         buffer_row_length: 0,
                         buffer_image_height: 0,
-                        image_subresource: vk::ImageSubresourceLayers { aspect_mask: vk::ImageAspectFlags::DEPTH, mip_level: 0, base_array_layer: 0, layer_count: 1 },
+                        image_subresource: vk::ImageSubresourceLayers {
+                            aspect_mask: vk::ImageAspectFlags::DEPTH,
+                            mip_level: 0,
+                            base_array_layer: 0,
+                            layer_count: 1,
+                        },
                         image_offset: vk::Offset3D::default(),
                         image_extent: vk::Extent3D { width: res, height: res, depth: 1 },
                     }];
-                    d.cmd_copy_image_to_buffer(cmd, simg.image, vk::ImageLayout::TRANSFER_SRC_OPTIMAL, sb.buffer, &region);
+                    d.cmd_copy_image_to_buffer(
+                        cmd,
+                        simg.image,
+                        vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                        sb.buffer,
+                        &region,
+                    );
                     mark(cmd, ["shadow c0 copy", "shadow c1 copy", "shadow c2 copy", "shadow c3 copy"][c as usize]);
                 }
                 memory_barrier(&d, cmd, (S::COPY, A::TRANSFER_WRITE), (S::FRAGMENT_SHADER, A::SHADER_STORAGE_READ));
@@ -891,7 +1163,10 @@ impl AshBackend {
                     vk::ImageAspectFlags::DEPTH,
                     (vk::ImageLayout::UNDEFINED, vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL),
                     (S::TOP_OF_PIPE, A::NONE),
-                    (S::EARLY_FRAGMENT_TESTS | S::LATE_FRAGMENT_TESTS, A::DEPTH_STENCIL_ATTACHMENT_WRITE | A::DEPTH_STENCIL_ATTACHMENT_READ),
+                    (
+                        S::EARLY_FRAGMENT_TESTS | S::LATE_FRAGMENT_TESTS,
+                        A::DEPTH_STENCIL_ATTACHMENT_WRITE | A::DEPTH_STENCIL_ATTACHMENT_READ,
+                    ),
                 );
                 let catt = [vk::RenderingAttachmentInfo::default()
                     .image_view(color.view)
@@ -904,7 +1179,9 @@ impl AshBackend {
                     .image_layout(vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL)
                     .load_op(vk::AttachmentLoadOp::CLEAR)
                     .store_op(vk::AttachmentStoreOp::DONT_CARE)
-                    .clear_value(vk::ClearValue { depth_stencil: vk::ClearDepthStencilValue { depth: 0.0, stencil: 0 } });
+                    .clear_value(vk::ClearValue {
+                        depth_stencil: vk::ClearDepthStencilValue { depth: 0.0, stencil: 0 },
+                    });
                 let ri = vk::RenderingInfo::default()
                     .render_area(vk::Rect2D { offset: vk::Offset2D::default(), extent: ext })
                     .layer_count(1)
@@ -918,7 +1195,13 @@ impl AshBackend {
                     // the vegetation) and the instance meshes shade with EQUAL: one shaded fragment
                     // per pixel for the foliage, which is where the overdraw is
                     if inst.is_some() {
-                        draw_inst(cmd, [p.pre_inst, p.pre_inst_alpha, p.pre_imp, p.pre_imp], 0, 0, if f.impostor_card_depth { 3 } else { 1 });
+                        draw_inst(
+                            cmd,
+                            [p.pre_inst, p.pre_inst_alpha, p.pre_imp, p.pre_imp],
+                            0,
+                            0,
+                            if f.impostor_card_depth { 3 } else { 1 },
+                        );
                         mark(cmd, "prepass instances");
                     }
                 }
@@ -955,13 +1238,27 @@ impl AshBackend {
                     buffer_offset: 0,
                     buffer_row_length: 0,
                     buffer_image_height: 0,
-                    image_subresource: vk::ImageSubresourceLayers { aspect_mask: vk::ImageAspectFlags::COLOR, mip_level: 0, base_array_layer: 0, layer_count: 1 },
+                    image_subresource: vk::ImageSubresourceLayers {
+                        aspect_mask: vk::ImageAspectFlags::COLOR,
+                        mip_level: 0,
+                        base_array_layer: 0,
+                        layer_count: 1,
+                    },
                     image_offset: vk::Offset3D::default(),
                     image_extent: vk::Extent3D { width: f.width, height: f.height, depth: 1 },
                 }];
                 d.cmd_copy_image_to_buffer(cmd, color.image, vk::ImageLayout::TRANSFER_SRC_OPTIMAL, rb.buffer, &region);
                 if let Some(i) = inst.as_ref() {
-                    d.cmd_copy_buffer(cmd, i.draws.buffer, i.readback.buffer, &[vk::BufferCopy { src_offset: 0, dst_offset: 0, size: (2 * i.views * i.mesh_count) as u64 * 20 }]);
+                    d.cmd_copy_buffer(
+                        cmd,
+                        i.draws.buffer,
+                        i.readback.buffer,
+                        &[vk::BufferCopy {
+                            src_offset: 0,
+                            dst_offset: 0,
+                            size: (2 * i.views * i.mesh_count) as u64 * 20,
+                        }],
+                    );
                 }
                 memory_barrier(&d, cmd, (S::COPY, A::TRANSFER_WRITE), (S::HOST, A::HOST_READ));
             }
@@ -973,7 +1270,11 @@ impl AshBackend {
             let marks = marks.borrow();
             let mut ts = vec![0u64; marks.len() + 1];
             // SAFETY: queries 0..=marks.len() were written by the completed submit.
-            if unsafe { d.get_query_pool_results(qp, 0, &mut ts, vk::QueryResultFlags::TYPE_64 | vk::QueryResultFlags::WAIT) }.is_ok() {
+            if unsafe {
+                d.get_query_pool_results(qp, 0, &mut ts, vk::QueryResultFlags::TYPE_64 | vk::QueryResultFlags::WAIT)
+            }
+            .is_ok()
+            {
                 let ms = |a: u64, b: u64| b.saturating_sub(a) as f64 * period as f64 * 1e-6;
                 let se = *split.borrow();
                 let last = marks.len();
@@ -984,7 +1285,8 @@ impl AshBackend {
                 t.breakdown = marks.iter().enumerate().map(|(k, &l)| (l, ms(ts[k], ts[k + 1]))).collect();
             }
         }
-        t.shadow_terrain_triangles = if f.terrain_chunks.is_empty() { vec![n_idx as u64 / 3; f.shadows.len()] } else { shadow_tris };
+        t.shadow_terrain_triangles =
+            if f.terrain_chunks.is_empty() { vec![n_idx as u64 / 3; f.shadows.len()] } else { shadow_tris };
         let px = rb.mapped()[..rb_bytes as usize].to_vec();
         if let Some(i) = inst.as_ref() {
             let bytes = i.readback.mapped();
@@ -1075,25 +1377,43 @@ struct InstBufs {
 }
 
 impl InstBufs {
-    fn new(ctx: &mut crate::context::VkContext, set: &InstancedSet<'_>, views: &[QViewGpu]) -> Result<Self, BackendError> {
+    fn new(
+        ctx: &mut crate::context::VkContext,
+        set: &InstancedSet<'_>,
+        views: &[QViewGpu],
+    ) -> Result<Self, BackendError> {
         let sda = vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS | vk::BufferUsageFlags::STORAGE_BUFFER;
         let n = set.instances.len() as u32;
         let mc = set.meshes.len() as u32;
         let nv = views.len() as u32;
-        if views.is_empty() || views.len() > MAX_VIEWS || 2 * nv * mc > SCAN_TILE || set.impostor_first > mc || n >= 1 << 24 {
-            return Err(BackendError::BadConfig("instanced set: 1..=5 views, 2 x views x meshes <= 1024, < 2^24 instances"));
+        if views.is_empty()
+            || views.len() > MAX_VIEWS
+            || 2 * nv * mc > SCAN_TILE
+            || set.impostor_first > mc
+            || n >= 1 << 24
+        {
+            return Err(BackendError::BadConfig(
+                "instanced set: 1..=5 views, 2 x views x meshes <= 1024, < 2^24 instances",
+            ));
         }
         if !set.lod.is_empty() && set.lod.len() != mc as usize {
             return Err(BackendError::BadConfig("instanced set: lod table must have one entry per mesh"));
         }
-        let up = |ctx: &mut crate::context::VkContext, name: &str, bytes: &[u8], usage: vk::BufferUsageFlags| -> Result<GpuBuffer, BackendError> {
+        let up = |ctx: &mut crate::context::VkContext,
+                  name: &str,
+                  bytes: &[u8],
+                  usage: vk::BufferUsageFlags|
+         -> Result<GpuBuffer, BackendError> {
             let mut b = GpuBuffer::new(ctx, name, bytes.len().max(16) as u64, usage, MemoryLocation::CpuToGpu)?;
             b.mapped_mut()[..bytes.len()].copy_from_slice(bytes);
             Ok(b)
         };
-        let gpu = |ctx: &mut crate::context::VkContext, name: &str, bytes: u64, usage: vk::BufferUsageFlags| GpuBuffer::new(ctx, name, bytes.max(16), usage, MemoryLocation::GpuOnly);
+        let gpu = |ctx: &mut crate::context::VkContext, name: &str, bytes: u64, usage: vk::BufferUsageFlags| {
+            GpuBuffer::new(ctx, name, bytes.max(16), usage, MemoryLocation::GpuOnly)
+        };
         let td = vk::BufferUsageFlags::TRANSFER_DST | vk::BufferUsageFlags::TRANSFER_SRC;
-        let lod: Vec<[u32; 4]> = if set.lod.is_empty() { vec![[LOD_NONE, 0, 0, 0]; mc as usize] } else { set.lod.to_vec() };
+        let lod: Vec<[u32; 4]> =
+            if set.lod.is_empty() { vec![[LOD_NONE, 0, 0, 0]; mc as usize] } else { set.lod.to_vec() };
         let mut b = Self {
             vb: up(ctx, "qi_vertices", bytemuck::cast_slice(set.vertices), sda)?,
             ib: up(ctx, "qi_indices", bytemuck::cast_slice(set.indices), vk::BufferUsageFlags::INDEX_BUFFER)?,
@@ -1106,7 +1426,13 @@ impl InstBufs {
             slots: gpu(ctx, "qi_slots", (nv * n) as u64 * 16, sda)?,
             visible: gpu(ctx, "qi_visible", (nv * n) as u64 * 8, sda)?,
             draws: gpu(ctx, "qi_draws", (2 * nv * mc) as u64 * 20, sda | td | vk::BufferUsageFlags::INDIRECT_BUFFER)?,
-            readback: GpuBuffer::new(ctx, "qi_readback", (2 * nv * mc) as u64 * 20, vk::BufferUsageFlags::TRANSFER_DST, MemoryLocation::GpuToCpu)?,
+            readback: GpuBuffer::new(
+                ctx,
+                "qi_readback",
+                (2 * nv * mc) as u64 * 20,
+                vk::BufferUsageFlags::TRANSFER_DST,
+                MemoryLocation::GpuToCpu,
+            )?,
             atlas: match set.atlas {
                 Some((bytes, _)) if !bytes.is_empty() => Some(up(ctx, "qi_atlas", bytes, sda)?),
                 _ => None,
@@ -1140,7 +1466,23 @@ impl InstBufs {
     }
 
     fn destroy(self, ctx: &mut crate::context::VkContext) {
-        for mut b in [self.vb, self.ib, self.meshes, self.inst, self.lod, self.frame, self.counts, self.offsets, self.slots, self.visible, self.draws, self.readback].into_iter().chain(self.atlas) {
+        for mut b in [
+            self.vb,
+            self.ib,
+            self.meshes,
+            self.inst,
+            self.lod,
+            self.frame,
+            self.counts,
+            self.offsets,
+            self.slots,
+            self.visible,
+            self.draws,
+            self.readback,
+        ]
+        .into_iter()
+        .chain(self.atlas)
+        {
             b.destroy(ctx);
         }
     }
@@ -1155,7 +1497,12 @@ mod chunk_tests {
         // a 60 x 60 grid of 50 m quads around the camera
         let n = 60u32;
         let v: Vec<QVertex> = (0..=n)
-            .flat_map(|j| (0..=n).map(move |i| QVertex { pos: [(i as f32 - 30.0) * 50.0, ((i * 7 + j * 3) % 11) as f32, (j as f32 - 30.0) * 50.0], ..Default::default() }))
+            .flat_map(|j| {
+                (0..=n).map(move |i| QVertex {
+                    pos: [(i as f32 - 30.0) * 50.0, ((i * 7 + j * 3) % 11) as f32, (j as f32 - 30.0) * 50.0],
+                    ..Default::default()
+                })
+            })
             .collect();
         let mut idx = Vec::new();
         for j in 0..n {
@@ -1203,7 +1550,9 @@ mod clip_cascade_tests {
     #[test]
     fn clip_cascade_covers_every_direction_and_keeps_its_cell_while_walking() {
         let (res, f, grid) = (2048u32, 2500.0f32, 256u32);
-        for sun in [Vec3::new(0.4, 0.48, -0.78).normalize(), Vec3::new(-0.2, 0.9, 0.1).normalize(), Vec3::new(0.0, 1.0, 0.0)] {
+        for sun in
+            [Vec3::new(0.4, 0.48, -0.78).normalize(), Vec3::new(-0.2, 0.9, 0.1).normalize(), Vec3::new(0.0, 1.0, 0.0)]
+        {
             let cam0 = DVec3::new(7799.3, 562.6, -3614.2);
             let (m0, texel, cell0) = sun_cascade_clip(cam0, f, sun, res, 6000.0, grid);
             assert!(texel * res as f32 * 0.5 <= 1.15 * f, "half-size {} for f {f}", texel * res as f32 * 0.5);
@@ -1260,7 +1609,15 @@ mod layout_tests {
         let src = include_str!("../shaders/quality.slang");
         let body = &src[src.find("struct QParams {").unwrap()..];
         let body = &body[..body.find("};").unwrap()];
-        let tail: Vec<&str> = body.lines().map(|l| l.split("//").next().unwrap().trim()).filter(|l| !l.is_empty()).skip_while(|l| !l.starts_with("float4 atmo;")).collect();
-        assert_eq!(tail, ["float4 atmo;", "float4 atmo2;", "uint* gmap;", "uint2 gmap_pad;", "uint4 gmap_lv[2];", "float4 gmap_f;"]);
+        let tail: Vec<&str> = body
+            .lines()
+            .map(|l| l.split("//").next().unwrap().trim())
+            .filter(|l| !l.is_empty())
+            .skip_while(|l| !l.starts_with("float4 atmo;"))
+            .collect();
+        assert_eq!(
+            tail,
+            ["float4 atmo;", "float4 atmo2;", "uint* gmap;", "uint2 gmap_pad;", "uint4 gmap_lv[2];", "float4 gmap_f;"]
+        );
     }
 }

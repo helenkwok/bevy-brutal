@@ -73,8 +73,14 @@ pub fn octahedron() -> MeshData {
     let (px, nx, py, ny, pz, nz) = (Vec3::X, -Vec3::X, Vec3::Y, -Vec3::Y, Vec3::Z, -Vec3::Z);
     let s = 0.6;
     let tris = [
-        [px, py, pz], [pz, py, nx], [nx, py, nz], [nz, py, px],
-        [pz, ny, px], [nx, ny, pz], [nz, ny, nx], [px, ny, nz],
+        [px, py, pz],
+        [pz, py, nx],
+        [nx, py, nz],
+        [nz, py, px],
+        [pz, ny, px],
+        [nx, ny, pz],
+        [nz, ny, nx],
+        [px, ny, nz],
     ]
     .map(|t| t.map(|p| p * s));
     MeshData::from_triangles(&tris)
@@ -92,7 +98,12 @@ pub fn tetrahedron() -> MeshData {
 /// Square pyramid, base on y = -0.5, apex at y = 0.5.
 pub fn pyramid() -> MeshData {
     let apex = Vec3::new(0., 0.5, 0.);
-    let (a, b, c, d) = (Vec3::new(-0.5, -0.5, 0.5), Vec3::new(0.5, -0.5, 0.5), Vec3::new(0.5, -0.5, -0.5), Vec3::new(-0.5, -0.5, -0.5));
+    let (a, b, c, d) = (
+        Vec3::new(-0.5, -0.5, 0.5),
+        Vec3::new(0.5, -0.5, 0.5),
+        Vec3::new(0.5, -0.5, -0.5),
+        Vec3::new(-0.5, -0.5, -0.5),
+    );
     let mut t = vec![[a, b, apex], [b, c, apex], [c, d, apex], [d, a, apex]];
     t.extend(quad(d, c, b, a));
     MeshData::from_triangles(&t)

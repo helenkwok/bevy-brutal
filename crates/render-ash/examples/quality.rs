@@ -15,12 +15,17 @@ use std::time::Instant;
 use coords::{BrickCoord, BrickGrid};
 use glam::{DVec3, Mat4, Vec3};
 use rayon::prelude::*;
-use render_ash::quality::{InstancedSet, QParamsGpu, QVertex, QualityFrame, ShadowView, reverse_z_infinite, sun_cascade, sun_cascade_clip};
+use render_ash::quality::{
+    InstancedSet, QParamsGpu, QVertex, QualityFrame, ShadowView, reverse_z_infinite, sun_cascade, sun_cascade_clip,
+};
 use render_ash::validation::message_counts;
 use render_ash::voxel_gpu::VoxelJob;
 use render_ash::{AshBackend, BackendConfig};
 use voxel::fields::{Alpine, CaveNetwork, cave_path};
-use voxel::{BrickMesh, DensityField, SUB, ShellLayout, VoxelConfig, bricks_in, plan_brick, remove_islands, sample_brick_filtered, sample_brick_smooth, filter_level};
+use voxel::{
+    BrickMesh, DensityField, SUB, ShellLayout, VoxelConfig, bricks_in, filter_level, plan_brick, remove_islands,
+    sample_brick_filtered, sample_brick_smooth,
+};
 
 const W: u32 = 1920;
 const H: u32 = 1080;
@@ -106,7 +111,12 @@ fn voxel_near(
             .filter_map(|&c| {
                 let (mask, finer) = plan_brick(grid, layout, c).expect("H8 layout");
                 // cave: per-shell level filter (as approved); mountains: the continuous filter
-                let s = if smooth { sample_brick_smooth(field, cfg, layout, c, mask) } else { sample_brick_filtered(field, cfg, layout, c, mask) }.expect("finite");
+                let s = if smooth {
+                    sample_brick_smooth(field, cfg, layout, c, mask)
+                } else {
+                    sample_brick_filtered(field, cfg, layout, c, mask)
+                }
+                .expect("finite");
                 s.has_sign_change().then_some((s, mask, finer))
             })
             .collect();
@@ -123,7 +133,13 @@ fn voxel_near(
                     for (k, s) in smp.iter_mut().enumerate() {
                         s.0.d.copy_from_slice(&dec.samples[k * m..(k + 1) * m]);
                     }
-                    eprintln!("BRUTAL_TQ {bits}: {} bricks, {} KiB blobs (raw {} KiB), GPU decode {:.2} ms (lavapipe)", smp.len(), dec.upload_bytes / 1024, dec.raw_bytes / 1024, dec.gpu_ms.unwrap_or(f64::NAN));
+                    eprintln!(
+                        "BRUTAL_TQ {bits}: {} bricks, {} KiB blobs (raw {} KiB), GPU decode {:.2} ms (lavapipe)",
+                        smp.len(),
+                        dec.upload_bytes / 1024,
+                        dec.raw_bytes / 1024,
+                        dec.gpu_ms.unwrap_or(f64::NAN)
+                    );
                 }
                 TqMode::Hybrid(bits) => smp.par_iter_mut().for_each(|s| {
                     let blob = asset::tq::encode(&s.0, bits, &rot);
@@ -133,7 +149,8 @@ fn voxel_near(
                 TqMode::Off => {}
             }
         }
-        let jobs: Vec<VoxelJob<'_>> = smp.iter().map(|s| VoxelJob { samples: &s.0, transitions: s.1, finer: s.2 }).collect();
+        let jobs: Vec<VoxelJob<'_>> =
+            smp.iter().map(|s| VoxelJob { samples: &s.0, transitions: s.1, finer: s.2 }).collect();
         let t1 = Instant::now();
         let g = b.mesh_voxels_gpu(cfg, &jobs).expect("gpu mesh");
         st.gpu_mesh_ms += t1.elapsed().as_secs_f64() * 1e3;
@@ -166,23 +183,32 @@ fn voxel_near(
             *directed.entry((a, c)).or_default() += 1;
         }
     }
-    let on_boundary = |p: [i64; 3], q: [i64; 3]| (0..3).any(|i| (p[i] == lo[i] && q[i] == lo[i]) || (p[i] == hi[i] && q[i] == hi[i]));
+    let on_boundary =
+        |p: [i64; 3], q: [i64; 3]| (0..3).any(|i| (p[i] == lo[i] && q[i] == lo[i]) || (p[i] == hi[i] && q[i] == hi[i]));
     // manifold + consistently oriented: every directed edge used once, no degenerate triangles
     let degenerate = m.indices.chunks(3).filter(|t| t[0] == t[1] || t[1] == t[2] || t[0] == t[2]).count();
     st.topo_clean = degenerate == 0 && directed.values().all(|&c| c == 1);
-    st.interior_open_edges = directed.keys().filter(|&&(a, c)| !directed.contains_key(&(c, a)) && !on_boundary(m.ipos[a as usize], m.ipos[c as usize])).count();
+    st.interior_open_edges = directed
+        .keys()
+        .filter(|&&(a, c)| !directed.contains_key(&(c, a)) && !on_boundary(m.ipos[a as usize], m.ipos[c as usize]))
+        .count();
     let isl = remove_islands(&mut m, min_island);
     st.islands_removed = isl.removed_components;
     st.island_tris_removed = isl.removed_triangles;
     st.voxel_tris = m.indices.len() / 3;
     let k = grid.voxel_m() / SUB as f64;
-    let world: Vec<DVec3> = m.ipos.iter().map(|p| DVec3::new(p[0] as f64 * k, p[1] as f64 * k, p[2] as f64 * k)).collect();
+    let world: Vec<DVec3> =
+        m.ipos.iter().map(|p| DVec3::new(p[0] as f64 * k, p[1] as f64 * k, p[2] as f64 * k)).collect();
     let level_cell: Vec<f64> = m
         .ipos
         .par_iter()
         .map(|p| {
             let q = p.map(|c| c.div_euclid(SUB));
-            if smooth { layout.smooth_filter_cell(grid.voxel_m(), q) } else { grid.voxel_m() * (1u64 << filter_level(layout, q)) as f64 }
+            if smooth {
+                layout.smooth_filter_cell(grid.voxel_m(), q)
+            } else {
+                grid.voxel_m() * (1u64 << filter_level(layout, q)) as f64
+            }
         })
         .collect();
     let n = world.len();
@@ -211,7 +237,14 @@ fn soft_visibility(d: &dyn Fn(DVec3) -> f64, p: DVec3, light: DVec3, start: f64)
 }
 
 /// `light`: optional point light whose soft visibility is written to `attr.w` (cave lantern).
-fn attributes(field: &dyn DensityField, m: &Mesh, cam: DVec3, ao_scales: &[f64], cav_scale: f64, light: Option<DVec3>) -> Vec<QVertex> {
+fn attributes(
+    field: &dyn DensityField,
+    m: &Mesh,
+    cam: DVec3,
+    ao_scales: &[f64],
+    cav_scale: f64,
+    light: Option<DVec3>,
+) -> Vec<QVertex> {
     (0..m.world.len())
         .into_par_iter()
         .map(|i| {
@@ -242,7 +275,11 @@ fn attributes(field: &dyn DensityField, m: &Mesh, cam: DVec3, ao_scales: &[f64],
                 None => m.flags[i] as f64,
             };
             let r = p - cam;
-            QVertex { pos: [r.x as f32, r.y as f32, r.z as f32], nrm: [n.x as f32, n.y as f32, n.z as f32], attr: [ao as f32, cavity as f32, convex as f32, w as f32] }
+            QVertex {
+                pos: [r.x as f32, r.y as f32, r.z as f32],
+                nrm: [n.x as f32, n.y as f32, n.z as f32],
+                attr: [ao as f32, cavity as f32, convex as f32, w as f32],
+            }
         })
         .collect()
 }
@@ -254,7 +291,17 @@ fn attributes(field: &dyn DensityField, m: &Mesh, cam: DVec3, ao_scales: &[f64],
 /// cracks. Inside the voxel region (1.5 cell overlap) the ring is lowered so the voxel surface
 /// wins. Cells outside the view wedge (+ shadow-caster margin) are skipped.
 #[allow(clippy::too_many_arguments)]
-fn far_rings(a: &Alpine, inner: f64, ratio: f64, outer: f64, centre: (f64, f64), cam: DVec3, yaw: f64, half_fov: f64, min_cell: f64) -> Mesh {
+fn far_rings(
+    a: &Alpine,
+    inner: f64,
+    ratio: f64,
+    outer: f64,
+    centre: (f64, f64),
+    cam: DVec3,
+    yaw: f64,
+    half_fov: f64,
+    min_cell: f64,
+) -> Mesh {
     let mut m = Mesh { world: Vec::new(), level_cell: Vec::new(), flags: Vec::new(), indices: Vec::new() };
     let mut r = inner;
     let mut s = ratio * inner;
@@ -393,7 +440,12 @@ fn downsample(px: &[u8], w: u32, h: u32, f: u32, keep_alpha: bool) -> Vec<u8> {
                 row[x * 4 + ch] = lin_to_srgb(if keep_alpha && wsum > 0.0 { s / wsum } else { s / (f * f) as f32 });
             }
             row[x * 4 + 3] = if keep_alpha {
-                let a: u32 = (0..f as usize * f as usize).map(|k| px[(((y * f as usize + k / f as usize) * w as usize) + x * f as usize + k % f as usize) * 4 + 3] as u32).sum();
+                let a: u32 = (0..f as usize * f as usize)
+                    .map(|k| {
+                        px[(((y * f as usize + k / f as usize) * w as usize) + x * f as usize + k % f as usize) * 4 + 3]
+                            as u32
+                    })
+                    .sum();
                 ((a as f32 / (f * f) as f32) + 0.5) as u8
             } else {
                 255
@@ -464,7 +516,11 @@ const SPLITS: [f32; 4] = [120.0, 600.0, 2500.0, 9000.0];
 /// Cascade split distances: [`SPLITS`], or `SPLITS=a,b,c,d` (m; the orbit -> mountains descent
 /// widens them with the camera's height above the terrain).
 fn splits() -> [f32; 4] {
-    std::env::var("SPLITS").ok().and_then(|v| v.split(',').map(|t| t.trim().parse::<f32>().ok()).collect::<Option<Vec<_>>>()).and_then(|v| <[f32; 4]>::try_from(v).ok()).unwrap_or(SPLITS)
+    std::env::var("SPLITS")
+        .ok()
+        .and_then(|v| v.split(',').map(|t| t.trim().parse::<f32>().ok()).collect::<Option<Vec<_>>>())
+        .and_then(|v| <[f32; 4]>::try_from(v).ok())
+        .unwrap_or(SPLITS)
 }
 
 /// Earth round 3 "composite layer" mode for the orbit -> mountains descent:
@@ -510,11 +566,20 @@ fn cascades(o: DVec3, d: Vec3, fwd: Vec3, sun: Vec3, res: u32, clip: bool) -> Ca
     let sp = splits();
     for (i, &f) in sp.iter().enumerate() {
         let far = clip && i >= 2;
-        let (m, texel, cell) = if far { sun_cascade_clip(c, f, sun, res, 6000.0, res / 8) } else { sun_cascade(c, fwd, FOV, aspect, near_d, f, sun, res, 6000.0) };
+        let (m, texel, cell) = if far {
+            sun_cascade_clip(c, f, sun, res, 6000.0, res / 8)
+        } else {
+            sun_cascade(c, fwd, FOV, aspect, near_d, f, sun, res, 6000.0)
+        };
         let m = m * tr;
         shadows.push(ShadowView { view_proj: m, texel });
         cells.push((cell, near_d, f));
-        slices.push(if far { m } else { render_ash::cull::vk_perspective(FOV, aspect, if i == 0 { 0.05 } else { sp[i - 1] * 0.8 * 0.55 }, f) * view_m });
+        slices.push(if far {
+            m
+        } else {
+            render_ash::cull::vk_perspective(FOV, aspect, if i == 0 { 0.05 } else { sp[i - 1] * 0.8 * 0.55 }, f)
+                * view_m
+        });
         near_d = f * 0.8;
     }
     (shadows, cells, slices)
@@ -569,7 +634,10 @@ fn ground_map(b: &mut AshBackend, g: &voxel::ground::Ground, grf: &str) -> (u64,
         let mut cur: Vec<[f32; 5]> = (0..n * n)
             .into_par_iter()
             .map(|q| {
-                let (x, z) = (gf.world_xz.0 - l.half_m + ((q % n) as f64 + 0.5) * step, gf.world_xz.1 - l.half_m + ((q / n) as f64 + 0.5) * step);
+                let (x, z) = (
+                    gf.world_xz.0 - l.half_m + ((q % n) as f64 + 0.5) * step,
+                    gf.world_xz.1 - l.half_m + ((q / n) as f64 + 0.5) * step,
+                );
                 let a = &l.albedo[q * 4..q * 4 + 4];
                 // the graft bake's imagery weight (it leads the height blend)
                 let w = ss(0.0, 0.6, g.weight(x, z)) as f32;
@@ -579,7 +647,12 @@ fn ground_map(b: &mut AshBackend, g: &voxel::ground::Ground, grf: &str) -> (u64,
         lv[k] = [n as u32, 0, words.len() as u32, 0];
         let mut m = n;
         loop {
-            words.extend(cur.iter().map(|c| enc(c[0]) | enc(c[1]) << 8 | enc(c[2]) << 16 | (((c[3].clamp(0.0, 1.0) * 127.0).round() as u32) | if c[4] >= 0.5 { 128 } else { 0 }) << 24));
+            words.extend(cur.iter().map(|c| {
+                enc(c[0])
+                    | enc(c[1]) << 8
+                    | enc(c[2]) << 16
+                    | (((c[3].clamp(0.0, 1.0) * 127.0).round() as u32) | if c[4] >= 0.5 { 128 } else { 0 }) << 24
+            }));
             lv[k][1] += 1;
             if m <= 64 {
                 break;
@@ -626,7 +699,8 @@ fn mountains(b: &mut AshBackend, st: &mut Stats) -> (Vec<QVertex>, Vec<u32>, Vie
             None
         }
     };
-    let ground = ground_file.map(|f| std::sync::Arc::new(voxel::ground::Ground::load(&f).unwrap_or_else(|e| panic!("{e}"))));
+    let ground =
+        ground_file.map(|f| std::sync::Arc::new(voxel::ground::Ground::load(&f).unwrap_or_else(|e| panic!("{e}"))));
     let alb_file = match std::env::var("GROUND_ALB") {
         Ok(f) if f == "off" => None,
         Ok(f) => Some(f),
@@ -640,11 +714,18 @@ fn mountains(b: &mut AshBackend, st: &mut Stats) -> (Vec<QVertex>, Vec<u32>, Vie
     let gmap = ground.as_ref().and_then(|g| alb_file.as_ref().map(|f| ground_map(b, g, f)));
     // default vista: valley floor at ~630 m looking SSE up a valley at a range of several
     // peaks 2.5-12 km away (chosen by a skyline-scored search; CAM_* env vars override)
-    let (cx, cz) = (std::env::var("CAM_X").ok().and_then(|v| v.parse().ok()).unwrap_or(7700.0), std::env::var("CAM_Z").ok().and_then(|v| v.parse().ok()).unwrap_or(-4200.0));
+    let (cx, cz) = (
+        std::env::var("CAM_X").ok().and_then(|v| v.parse().ok()).unwrap_or(7700.0),
+        std::env::var("CAM_Z").ok().and_then(|v| v.parse().ok()).unwrap_or(-4200.0),
+    );
     let ground = field.height(cx, cz, 0.5);
     // CAM_Y: absolute height (m) instead of CAM_H above the ground (the descent path)
     let cam_y = std::env::var("CAM_Y").ok().and_then(|v| v.parse::<f64>().ok());
-    let cam = DVec3::new(cx, cam_y.unwrap_or_else(|| ground + std::env::var("CAM_H").ok().and_then(|v| v.parse().ok()).unwrap_or(40.0)), cz);
+    let cam = DVec3::new(
+        cx,
+        cam_y.unwrap_or_else(|| ground + std::env::var("CAM_H").ok().and_then(|v| v.parse().ok()).unwrap_or(40.0)),
+        cz,
+    );
     let lay = layer();
     let yaw: f32 = std::env::var("CAM_YAW").ok().and_then(|v| v.parse().ok()).unwrap_or(2.75);
     let pitch: f32 = std::env::var("CAM_PITCH").ok().and_then(|v| v.parse().ok()).unwrap_or(0.08);
@@ -662,7 +743,9 @@ fn mountains(b: &mut AshBackend, st: &mut Stats) -> (Vec<QVertex>, Vec<u32>, Vie
     let layout = ShellLayout::camera_centred(&grid, [l(cam.x), l(shell_y), l(cam.z)], &[3, 3, 6, 6]);
     let outer = *layout.boxes.last().unwrap();
     let coarse = 32 * grid.step(layout.max_lod());
-    let al = |v: i64, up: bool| if up { (v + coarse - 1).div_euclid(coarse) * coarse } else { v.div_euclid(coarse) * coarse };
+    let al = |v: i64, up: bool| {
+        if up { (v + coarse - 1).div_euclid(coarse) * coarse } else { v.div_euclid(coarse) * coarse }
+    };
     // the region spans the field's rigorous height bounds: peaks can never be cut at its top
     let (hb_lo, hb_hi) = field.height_bounds();
     let region = (
@@ -685,11 +768,21 @@ fn mountains(b: &mut AshBackend, st: &mut Stats) -> (Vec<QVertex>, Vec<u32>, Vie
         for (lo, hi) in [(0.0, 60.0), (60.0, 250.0), (250.0, 1000.0), (1000.0, f64::MAX), (0.0, f64::MAX)] {
             let s = voxel::meshq::spike_counts(&pos, &near.indices, |c| (lo..hi).contains(&hd(c)));
             let hi_s = if hi < 1e9 { format!("{hi}") } else { "inf".into() };
-            eprintln!("spikes {lo:>4}..{hi_s:<5} m: tris {:>8} folds {:>6} creases {:>6} needles {:>6}", s.tris, s.folds, s.creases, s.needles);
+            eprintln!(
+                "spikes {lo:>4}..{hi_s:<5} m: tris {:>8} folds {:>6} creases {:>6} needles {:>6}",
+                s.tris, s.folds, s.creases, s.needles
+            );
         }
-        if let Some([x, z, r]) = std::env::var("SPIKE_AT").ok().and_then(|v| v.split(',').map(|t| t.parse::<f64>().ok()).collect::<Option<Vec<_>>>()).and_then(|v| <[f64; 3]>::try_from(v).ok()) {
+        if let Some([x, z, r]) = std::env::var("SPIKE_AT")
+            .ok()
+            .and_then(|v| v.split(',').map(|t| t.parse::<f64>().ok()).collect::<Option<Vec<_>>>())
+            .and_then(|v| <[f64; 3]>::try_from(v).ok())
+        {
             let s = voxel::meshq::spike_counts(&pos, &near.indices, |c| (c[0] - x).hypot(c[2] - z) < r);
-            eprintln!("spikes at ({x}, {z}) r {r}: tris {} folds {} creases {} needles {}", s.tris, s.folds, s.creases, s.needles);
+            eprintln!(
+                "spikes at ({x}, {z}) r {r}: tris {} folds {} creases {} needles {}",
+                s.tris, s.folds, s.creases, s.needles
+            );
         }
     }
     let t = Instant::now();
@@ -700,9 +793,16 @@ fn mountains(b: &mut AshBackend, st: &mut Stats) -> (Vec<QVertex>, Vec<u32>, Vie
     let default_rings = (26000.0, (FOV * W as f32 / H as f32 * 0.5) as f64);
     let (ring_outer, ring_fov) = match lay {
         Some(l) => {
-            let full = (std::env::var("RING_OUTER").ok().and_then(|v| v.parse().ok()).unwrap_or(104000.0), std::f64::consts::PI);
+            let full = (
+                std::env::var("RING_OUTER").ok().and_then(|v| v.parse().ok()).unwrap_or(104000.0),
+                std::f64::consts::PI,
+            );
             let f = l[5] as f64;
-            if f >= 1.0 { full } else { (default_rings.0 + (full.0 - default_rings.0) * f, default_rings.1 + (full.1 - default_rings.1) * f) }
+            if f >= 1.0 {
+                full
+            } else {
+                (default_rings.0 + (full.0 - default_rings.0) * f, default_rings.1 + (full.1 - default_rings.1) * f)
+            }
         }
         None => default_rings,
     };
@@ -723,19 +823,28 @@ fn mountains(b: &mut AshBackend, st: &mut Stats) -> (Vec<QVertex>, Vec<u32>, Vie
             while t < 26000.0 {
                 let h = field.height(cam.x + dx * t, cam.z + dz * t, (t * 0.004).max(1.0));
                 let e = (h - cam.y) / t;
-                if e > fmax.0 { fmax = (e, t, h); }
+                if e > fmax.0 {
+                    fmax = (e, t, h);
+                }
                 t *= 1.01;
             }
             let mut mmax = (f64::MIN, 0.0, 0.0, 0.0);
             for (i, p) in near.world.iter().enumerate() {
                 let r = *p - cam;
                 let d = r.x.hypot(r.z);
-                if d < 30.0 { continue; }
+                if d < 30.0 {
+                    continue;
+                }
                 let a = r.x.atan2(-r.z);
                 let da = (a - az + std::f64::consts::PI).rem_euclid(std::f64::consts::TAU) - std::f64::consts::PI;
-                if da.abs() < 0.004 && r.y / d > mmax.0 { mmax = (r.y / d, d, p.y, near.flags[i] as f64); }
+                if da.abs() < 0.004 && r.y / d > mmax.0 {
+                    mmax = (r.y / d, d, p.y, near.flags[i] as f64);
+                }
             }
-            eprintln!("az {k:+}: field max elev {:.4} at {:.0} m (h {:.0}) | mesh max elev {:.4} at {:.0} m (h {:.0}, ring {})", fmax.0, fmax.1, fmax.2, mmax.0, mmax.1, mmax.2, mmax.3);
+            eprintln!(
+                "az {k:+}: field max elev {:.4} at {:.0} m (h {:.0}) | mesh max elev {:.4} at {:.0} m (h {:.0}, ring {})",
+                fmax.0, fmax.1, fmax.2, mmax.0, mmax.1, mmax.2, mmax.3
+            );
         }
     }
     let mut verts = attributes(&field, &near, cam, &[2.0, 6.0, 16.0, 40.0, 110.0], 3.0, None);
@@ -757,7 +866,10 @@ fn mountains(b: &mut AshBackend, st: &mut Stats) -> (Vec<QVertex>, Vec<u32>, Vie
 
     let env = |k: &str, d: f32| std::env::var(k).ok().and_then(|v| v.parse().ok()).unwrap_or(d);
     // SUN_AZ: absolute sun azimuth (rad, same convention as CAM_YAW) instead of relative to the view
-    let (sy, se) = (std::env::var("SUN_AZ").ok().and_then(|v| v.parse().ok()).unwrap_or(yaw + env("SUN_REL_YAW", 2.35)), env("SUN_EL", 0.5));
+    let (sy, se) = (
+        std::env::var("SUN_AZ").ok().and_then(|v| v.parse().ok()).unwrap_or(yaw + env("SUN_REL_YAW", 2.35)),
+        env("SUN_EL", 0.5),
+    );
     let sun = Vec3::new(sy.sin() * se.cos(), se.sin(), -sy.cos() * se.cos()).normalize();
     let aspect = W as f32 / H as f32;
     let (vp, inv) = camera_matrices(fwd, aspect);
@@ -787,7 +899,8 @@ fn mountains(b: &mut AshBackend, st: &mut Stats) -> (Vec<QVertex>, Vec<u32>, Vie
         if std::env::var("ENV_SH").as_deref() == Ok("0") {
             p.lantern_pos[3] = 1.0;
         }
-        p.atmo2 = [if g { env("GRADE_K", 0.10) } else { 0.0 }, 0.0047, 1.0, if g { env("GRADE_WB", 0.015) } else { 0.0 }];
+        p.atmo2 =
+            [if g { env("GRADE_K", 0.10) } else { 0.0 }, 0.0047, 1.0, if g { env("GRADE_WB", 0.015) } else { 0.0 }];
         p.sun_color = [1.0, 1.0, 1.0, env("EXPOSURE", 1.1)];
     }
     if let Some((addr, lv, f)) = gmap {
@@ -858,7 +971,24 @@ fn mountains(b: &mut AshBackend, st: &mut Stats) -> (Vec<QVertex>, Vec<u32>, Vie
     // spatial terrain chunks so each sun cascade draws only its casters
     let (indices, chunks) = render_ash::quality::terrain_chunks(&verts, &near.indices, 80.0);
     eprintln!("terrain chunks: {}", chunks.len());
-    (verts, indices, View { cam, fwd, params: p, shadows, cells, spot: false, shadow_res: res, veg, veg_ms, atmosphere, chunks, slices })
+    (
+        verts,
+        indices,
+        View {
+            cam,
+            fwd,
+            params: p,
+            shadows,
+            cells,
+            spot: false,
+            shadow_res: res,
+            veg,
+            veg_ms,
+            atmosphere,
+            chunks,
+            slices,
+        },
+    )
 }
 
 fn cave(b: &mut AshBackend, st: &mut Stats) -> (Vec<QVertex>, Vec<u32>, View) {
@@ -874,10 +1004,20 @@ fn cave(b: &mut AshBackend, st: &mut Stats) -> (Vec<QVertex>, Vec<u32>, View) {
     let layout = ShellLayout::camera_centred(&grid, [l(cam.x), l(cam.y), l(cam.z)], &[2, 2, 2, 2]);
     let outer = *layout.boxes.last().unwrap();
     let coarse = 32 * grid.step(layout.max_lod());
-    let al = |v: i64, up: bool| if up { (v + coarse - 1).div_euclid(coarse) * coarse } else { v.div_euclid(coarse) * coarse };
+    let al = |v: i64, up: bool| {
+        if up { (v + coarse - 1).div_euclid(coarse) * coarse } else { v.div_euclid(coarse) * coarse }
+    };
     let region = (
-        [al(l(-28.0).min(outer.lo[0] - coarse), false), al(l(-14.0).min(outer.lo[1] - coarse), false), al(l(-64.0).min(outer.lo[2] - coarse), false)],
-        [al(l(30.0).max(outer.hi[0] + coarse), true), al(l(18.0).max(outer.hi[1] + coarse), true), al(l(14.0).max(outer.hi[2] + coarse), true)],
+        [
+            al(l(-28.0).min(outer.lo[0] - coarse), false),
+            al(l(-14.0).min(outer.lo[1] - coarse), false),
+            al(l(-64.0).min(outer.lo[2] - coarse), false),
+        ],
+        [
+            al(l(30.0).max(outer.hi[0] + coarse), true),
+            al(l(18.0).max(outer.hi[1] + coarse), true),
+            al(l(14.0).max(outer.hi[2] + coarse), true),
+        ],
     );
     let skip = |_c: BrickCoord| false;
     let near = voxel_near(b, &field, &cfg, &layout, region, &skip, 300, false, st);
@@ -910,16 +1050,42 @@ fn cave(b: &mut AshBackend, st: &mut Stats) -> (Vec<QVertex>, Vec<u32>, View) {
     p.lantern_color = [42.0, 20.0, 7.0, 0.0];
     p.shadow_info = [0.0, 0.0, 1.0, 1.0];
     p.splits = [1e9; 4];
-    (verts, near.indices, View { cam, fwd, params: p, shadows, cells: Vec::new(), spot: true, shadow_res: 2048, veg: None, veg_ms: 0.0, atmosphere: false, chunks: Vec::new(), slices: Vec::new() })
+    (
+        verts,
+        near.indices,
+        View {
+            cam,
+            fwd,
+            params: p,
+            shadows,
+            cells: Vec::new(),
+            spot: true,
+            shadow_res: 2048,
+            veg: None,
+            veg_ms: 0.0,
+            atmosphere: false,
+            chunks: Vec::new(),
+            slices: Vec::new(),
+        },
+    )
 }
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    let scene = args.iter().position(|a| a == "--scene").and_then(|i| args.get(i + 1)).cloned().unwrap_or_else(|| "mountains".into());
+    let scene = args
+        .iter()
+        .position(|a| a == "--scene")
+        .and_then(|i| args.get(i + 1))
+        .cloned()
+        .unwrap_or_else(|| "mountains".into());
     let validate = !args.iter().any(|a| a == "--no-validation");
     std::fs::create_dir_all("out/quality").unwrap();
     let (e0, w0) = message_counts();
-    let mut b = AshBackend::new(BackendConfig { max_instances: 16, extent: (64, 64), validation: validate, ..Default::default() }, None).expect("backend");
+    let mut b = AshBackend::new(
+        BackendConfig { max_instances: 16, extent: (64, 64), validation: validate, ..Default::default() },
+        None,
+    )
+    .expect("backend");
     let mut st = Stats::default();
     let t_all = Instant::now();
     let (verts, indices, view) = match scene.as_str() {
@@ -930,7 +1096,15 @@ fn main() {
     let build_ms = t_all.elapsed().as_secs_f64() * 1e3;
     let atlas = view.veg.as_ref().map_or(Vec::new(), |v| render_ash::impostor::atlas_bytes(&v.0.atlas));
     if let Some((v, _)) = view.veg.as_ref() {
-        eprintln!("impostor atlas: {} variants x {}x{} frames x {}^2 texels, {:.1} MB, hash {:016x}", v.atlas.len(), render_ash::impostor::IMP_FRAMES, render_ash::impostor::IMP_FRAMES, render_ash::impostor::IMP_RES, atlas.len() as f64 / 1e6, render_ash::impostor::atlas_hash(&v.atlas));
+        eprintln!(
+            "impostor atlas: {} variants x {}x{} frames x {}^2 texels, {:.1} MB, hash {:016x}",
+            v.atlas.len(),
+            render_ash::impostor::IMP_FRAMES,
+            render_ash::impostor::IMP_FRAMES,
+            render_ash::impostor::IMP_RES,
+            atlas.len() as f64 / 1e6,
+            render_ash::impostor::atlas_hash(&v.atlas)
+        );
     }
     // static shadow cascade caching: the far cascades (c2, c3) draw camera-independent casters
     // (terrain + impostor cards), so their key = world-space light matrix (grid cell, slice,
@@ -941,7 +1115,9 @@ fn main() {
         let mut h = Fp::default();
         h.bytes(bytemuck::cast_slice(&verts));
         h.bytes(bytemuck::cast_slice(&indices));
-        h.bytes(bytemuck::cast_slice(&view.chunks.iter().flat_map(|c| [c.first_index, c.index_count]).collect::<Vec<u32>>()));
+        h.bytes(bytemuck::cast_slice(
+            &view.chunks.iter().flat_map(|c| [c.first_index, c.index_count]).collect::<Vec<u32>>(),
+        ));
         if let Some((v, _)) = view.veg.as_ref() {
             h.bytes(bytemuck::cast_slice(&v.vertices));
             h.bytes(bytemuck::cast_slice(&v.indices));
@@ -954,9 +1130,18 @@ fn main() {
     let cache_keys: Vec<u64> = if std::env::var("SHADOW_CACHE").as_deref() == Ok("0") || view.spot {
         Vec::new()
     } else {
-        cache_keys_for(&view.cells, view.shadow_res, geo, [view.params.sun_dir[0], view.params.sun_dir[1], view.params.sun_dir[2]])
+        cache_keys_for(
+            &view.cells,
+            view.shadow_res,
+            geo,
+            [view.params.sun_dir[0], view.params.sun_dir[1], view.params.sun_dir[2]],
+        )
     };
-    eprintln!("shadow cache keys {:?} (caster fingerprint {:.0} ms)", cache_keys.iter().map(|k| *k != 0).collect::<Vec<_>>(), t_fp.elapsed().as_secs_f64() * 1e3);
+    eprintln!(
+        "shadow cache keys {:?} (caster fingerprint {:.0} ms)",
+        cache_keys.iter().map(|k| *k != 0).collect::<Vec<_>>(),
+        t_fp.elapsed().as_secs_f64() * 1e3
+    );
     let mut frame = QualityFrame {
         width: W * SS,
         height: H * SS,
@@ -1015,7 +1200,10 @@ fn main() {
             (px, t, tw.elapsed().as_secs_f64() * 1e3)
         })
         .collect();
-    eprintln!("gpu frame ms per run: {:?}", runs.iter().map(|r| (r.1.gpu_ms * 10.0).round() / 10.0).collect::<Vec<_>>());
+    eprintln!(
+        "gpu frame ms per run: {:?}",
+        runs.iter().map(|r| (r.1.gpu_ms * 10.0).round() / 10.0).collect::<Vec<_>>()
+    );
     eprintln!("cached shadow cascades per run: {:?}", runs.iter().map(|r| r.1.cached_cascades).collect::<Vec<_>>());
     // Camera-path benchmark (CAM_PATH=<frames>, mountains): walk at PATH_SPEED m/s (5) while
     // turning at PATH_TURN rad/s (0.785 = 45 deg/s), 30 fps steps. The scene stays built around
@@ -1057,7 +1245,11 @@ fn main() {
                 }
                 prev = keys;
             }
-            eprintln!("path sim {name}: {sim_n} frames, far-cascade hit rate c2 {:.1} % c3 {:.1} %", 100.0 * hits[2] as f64 / (sim_n - 1).max(1) as f64, 100.0 * hits[3] as f64 / (sim_n - 1).max(1) as f64);
+            eprintln!(
+                "path sim {name}: {sim_n} frames, far-cascade hit rate c2 {:.1} % c3 {:.1} %",
+                100.0 * hits[2] as f64 / (sim_n - 1).max(1) as f64,
+                100.0 * hits[3] as f64 / (sim_n - 1).max(1) as f64
+            );
         }
         let no_cache = cache_keys.is_empty();
         let aspect = W as f32 / H as f32;
@@ -1075,7 +1267,9 @@ fn main() {
             f.shadow_slices = &slices;
             f.shadow_cache_keys = &keys;
             if let Some(set) = f.instanced.as_mut() {
-                set.cull_view_proj = render_ash::cull::vk_perspective(FOV, aspect, 0.5, 40000.0) * render_ash::cull::look_at(Vec3::ZERO, fwd, Vec3::Y) * tr;
+                set.cull_view_proj = render_ash::cull::vk_perspective(FOV, aspect, 0.5, 40000.0)
+                    * render_ash::cull::look_at(Vec3::ZERO, fwd, Vec3::Y)
+                    * tr;
             }
             let (_, t) = b.render_quality(&f).expect("path frame");
             rows.push((t.gpu_ms, t.shadow_ms, t.cached_cascades));
@@ -1092,7 +1286,13 @@ fn main() {
             cached,
             2 * rows.len(),
             100.0 * cached as f64 / (2.0 * n),
-            if no_cache { "cold (SHADOW_CACHE=0)" } else if shadow_clip() { "clip" } else { "round-9 slice" }
+            if no_cache {
+                "cold (SHADOW_CACHE=0)"
+            } else if shadow_clip() {
+                "clip"
+            } else {
+                "round-9 slice"
+            }
         );
     }
     runs.sort_by(|a, b| a.1.gpu_ms.total_cmp(&b.1.gpu_ms));
@@ -1149,7 +1349,8 @@ fn main() {
         view.veg_ms
     );
     if std::env::var_os("QUALITY_MESH_STATS").is_some() {
-        let mut v: Vec<(usize, (u32, u64))> = t.camera_mesh_draws.iter().copied().enumerate().filter(|x| x.1.0 > 0).collect();
+        let mut v: Vec<(usize, (u32, u64))> =
+            t.camera_mesh_draws.iter().copied().enumerate().filter(|x| x.1.0 > 0).collect();
         v.sort_by_key(|x| std::cmp::Reverse(x.1.1));
         for (m, (n, tri)) in v.iter().take(16) {
             eprintln!("camera mesh {m:3}: {n:7} draws {tri:9} tris");
@@ -1159,5 +1360,9 @@ fn main() {
         eprintln!("gpu {l:>22}: {ms:8.1} ms");
     }
     println!("{json}");
-    std::fs::write(png.strip_suffix(".png").map_or(format!("out/quality/{scene}.json"), |b| format!("{b}.json")), json + "\n").unwrap();
+    std::fs::write(
+        png.strip_suffix(".png").map_or(format!("out/quality/{scene}.json"), |b| format!("{b}.json")),
+        json + "\n",
+    )
+    .unwrap();
 }

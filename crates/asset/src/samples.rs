@@ -148,12 +148,12 @@ pub fn decode_payload(h: &SampleHeader, coord: BrickCoord, d: &mut Decoder) -> R
     if h.band == 0 {
         return Ok(SamplePayload::Full(s));
     }
-    if h.band > voxel::DQ_MAX as u32 || h.face_mask != face_mask(&s) || mesh_band(&s, h.face_mask, h.band as i32) != s.d {
+    if h.band > voxel::DQ_MAX as u32 || h.face_mask != face_mask(&s) || mesh_band(&s, h.face_mask, h.band as i32) != s.d
+    {
         return Err(CodecError::Corrupt);
     }
     Ok(SamplePayload::Banded(MeshSamples { inner: s, band: h.band }))
 }
-
 
 fn decode(h: &SampleHeader, coord: BrickCoord, d: &mut Decoder) -> Result<BrickSamples, CodecError> {
     let n = h.n as usize;
@@ -248,4 +248,3 @@ pub fn mesh_band(s: &BrickSamples, mask: u8, t: i32) -> Vec<i32> {
     }
     s.d.iter().zip(&dil).map(|(&x, &k)| if k { x } else { x.clamp(-t, t) }).collect()
 }
-

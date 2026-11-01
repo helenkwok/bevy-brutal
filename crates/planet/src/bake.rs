@@ -151,7 +151,11 @@ fn encode(fmt: TexFormat, img: &[[f32; 4]], n: usize) -> Vec<u8> {
     let bytes: Vec<u8> = img
         .par_iter()
         .flat_map_iter(|p| {
-            let v: [u8; 4] = if srgb { [q(linear_to_srgb(p[0])), q(linear_to_srgb(p[1])), q(linear_to_srgb(p[2])), q(p[3])] } else { p.map(q) };
+            let v: [u8; 4] = if srgb {
+                [q(linear_to_srgb(p[0])), q(linear_to_srgb(p[1])), q(linear_to_srgb(p[2])), q(p[3])]
+            } else {
+                p.map(q)
+            };
             v.into_iter().take(comps)
         })
         .collect();
@@ -165,11 +169,18 @@ fn encode(fmt: TexFormat, img: &[[f32; 4]], n: usize) -> Vec<u8> {
             let h = (c.len() / (n * comps)) as u32;
             let (w, stride) = (n as u32, (n * comps) as u32);
             match fmt {
-                TexFormat::Bc4 => intel_tex_2::bc4::compress_blocks(&intel_tex_2::RSurface { data: c, width: w, height: h, stride }),
-                TexFormat::Bc5 => intel_tex_2::bc5::compress_blocks(&intel_tex_2::RgSurface { data: c, width: w, height: h, stride }),
+                TexFormat::Bc4 => {
+                    intel_tex_2::bc4::compress_blocks(&intel_tex_2::RSurface { data: c, width: w, height: h, stride })
+                }
+                TexFormat::Bc5 => {
+                    intel_tex_2::bc5::compress_blocks(&intel_tex_2::RgSurface { data: c, width: w, height: h, stride })
+                }
                 _ => {
                     let s = bc7_settings();
-                    intel_tex_2::bc7::compress_blocks(&s, &intel_tex_2::RgbaSurface { data: c, width: w, height: h, stride })
+                    intel_tex_2::bc7::compress_blocks(
+                        &s,
+                        &intel_tex_2::RgbaSurface { data: c, width: w, height: h, stride },
+                    )
                 }
             }
         })
@@ -185,7 +196,17 @@ pub fn encode_bc7_rgba8(bytes: &[u8], n: usize) -> Vec<u8> {
     let s = bc7_settings();
     let chunks: Vec<Vec<u8>> = bytes
         .par_chunks(n * 4 * rows)
-        .map(|c| intel_tex_2::bc7::compress_blocks(&s, &intel_tex_2::RgbaSurface { data: c, width: n as u32, height: (c.len() / (n * 4)) as u32, stride: (n * 4) as u32 }))
+        .map(|c| {
+            intel_tex_2::bc7::compress_blocks(
+                &s,
+                &intel_tex_2::RgbaSurface {
+                    data: c,
+                    width: n as u32,
+                    height: (c.len() / (n * 4)) as u32,
+                    stride: (n * 4) as u32,
+                },
+            )
+        })
         .collect();
     chunks.concat()
 }
@@ -200,13 +221,25 @@ fn bc7_settings() -> intel_tex_2::bc7::EncodeSettings {
 }
 
 /// Bake a cube texture from a texel function (linear values in [0, 1]).
-pub fn bake_cube<F: Fn(DVec3) -> [f32; 4] + Sync>(name: &str, fmt: TexFormat, size: usize, ss: usize, texel: &F) -> Texture {
+pub fn bake_cube<F: Fn(DVec3) -> [f32; 4] + Sync>(
+    name: &str,
+    fmt: TexFormat,
+    size: usize,
+    ss: usize,
+    texel: &F,
+) -> Texture {
     bake_cube_multi(name, &[fmt], size, ss, texel).pop().unwrap()
 }
 
 /// Bake once, encode to several formats (same texels, same box-filtered mips down to 4x4): the
 /// BCn and the uncompressed reference variants differ only by the block encoding.
-pub fn bake_cube_multi<F: Fn(DVec3) -> [f32; 4] + Sync>(name: &str, fmts: &[TexFormat], size: usize, ss: usize, texel: &F) -> Vec<Texture> {
+pub fn bake_cube_multi<F: Fn(DVec3) -> [f32; 4] + Sync>(
+    name: &str,
+    fmts: &[TexFormat],
+    size: usize,
+    ss: usize,
+    texel: &F,
+) -> Vec<Texture> {
     let mips = size.trailing_zeros() - 1; // down to 4x4
     let mut data = vec![Vec::new(); fmts.len()];
     for f in 0..6 {
@@ -222,7 +255,10 @@ pub fn bake_cube_multi<F: Fn(DVec3) -> [f32; 4] + Sync>(name: &str, fmts: &[TexF
             }
         }
     }
-    fmts.iter().zip(data).map(|(&format, data)| Texture { name: name.into(), format, size: size as u32, mips, data }).collect()
+    fmts.iter()
+        .zip(data)
+        .map(|(&format, data)| Texture { name: name.into(), format, size: size as u32, mips, data })
+        .collect()
 }
 
 /// Sources loaded from a `fetch_earth_data.sh` directory.
@@ -243,7 +279,8 @@ pub struct Sources {
 fn load(dir: &Path, name: &str) -> image::DynamicImage {
     let p = dir.join(name);
     let fail = |e: &dyn std::fmt::Display| -> ! { panic!("{}: {e} (run tools/fetch_earth_data.sh)", p.display()) };
-    let mut r = image::ImageReader::open(&p).unwrap_or_else(|e| fail(&e)).with_guessed_format().unwrap_or_else(|e| fail(&e));
+    let mut r =
+        image::ImageReader::open(&p).unwrap_or_else(|e| fail(&e)).with_guessed_format().unwrap_or_else(|e| fail(&e));
     r.no_limits();
     r.decode().unwrap_or_else(|e| fail(&e))
 }
@@ -335,7 +372,12 @@ pub const KTX2_FILES: [&str; 5] = ["albedo", "slope", "night", "clouds", "masks"
 /// volume, g cloud-top height km x 20 / 255, 0 = unknown), `masks` BC5 (r ice, g ocean depth), `height` R16 (CPU displacement, one
 /// level, decimetres; keys `planet.height_scale_m` / `planet.height_offset_m`). Raw sets use
 /// RGBA8 sRGB / RG8 / R8 / RG8 / RG8. Returns per-file (name, set, file bytes, GPU bytes).
-pub fn bake_ktx2(src: &Sources, cfg: &BakeConfig, sets: &[Ktx2Set], log: &mut dyn FnMut(&str)) -> std::io::Result<Vec<(String, usize, usize, usize)>> {
+pub fn bake_ktx2(
+    src: &Sources,
+    cfg: &BakeConfig,
+    sets: &[Ktx2Set],
+    log: &mut dyn FnMut(&str),
+) -> std::io::Result<Vec<(String, usize, usize, usize)>> {
     use crate::ktx2::write;
     let t0 = std::time::Instant::now();
     for s in sets {
@@ -344,7 +386,11 @@ pub fn bake_ktx2(src: &Sources, cfg: &BakeConfig, sets: &[Ktx2Set], log: &mut dy
     let mut report = Vec::new();
     let mut emit = |name: &str, texs: Vec<Texture>, log: &mut dyn FnMut(&str)| -> std::io::Result<()> {
         for (i, (t, s)) in texs.iter().zip(sets).enumerate() {
-            let kv: Vec<(&str, &[u8])> = if name == "albedo" || name == "height" { vec![("planet.credits", CREDITS.as_bytes())] } else { vec![] };
+            let kv: Vec<(&str, &[u8])> = if name == "albedo" || name == "height" {
+                vec![("planet.credits", CREDITS.as_bytes())]
+            } else {
+                vec![]
+            };
             let mut kv = kv;
             if name == "clouds" {
                 kv.push(("planet.clouds_source", src.clouds_src.as_bytes()));
@@ -355,7 +401,15 @@ pub fn bake_ktx2(src: &Sources, cfg: &BakeConfig, sets: &[Ktx2Set], log: &mut dy
             }
             let bytes = write(t, s.sc, &kv).map_err(std::io::Error::other)?;
             std::fs::write(s.dir.join(format!("{name}.ktx2")), &bytes)?;
-            log(&format!("{name} -> {} ({:?} {:?}): file {:.1} MB, GPU {:.1} MB, {:.1} s", s.dir.display(), t.format, s.sc, bytes.len() as f64 / 1048576.0, t.data.len() as f64 / 1048576.0, t0.elapsed().as_secs_f64()));
+            log(&format!(
+                "{name} -> {} ({:?} {:?}): file {:.1} MB, GPU {:.1} MB, {:.1} s",
+                s.dir.display(),
+                t.format,
+                s.sc,
+                bytes.len() as f64 / 1048576.0,
+                t.data.len() as f64 / 1048576.0,
+                t0.elapsed().as_secs_f64()
+            ));
             report.push((name.to_string(), i, bytes.len(), t.data.len()));
         }
         Ok(())
@@ -377,7 +431,9 @@ pub fn bake_ktx2(src: &Sources, cfg: &BakeConfig, sets: &[Ktx2Set], log: &mut dy
         [slope_enc(ge), slope_enc(gn), 0.0, 0.0]
     });
     emit("slope", t, log)?;
-    let t = bake_cube_multi("night", &pick(TexFormat::Bc4, TexFormat::R8), cfg.night, ss, &|d| [src.night.sample(d, 0), 0.0, 0.0, 0.0]);
+    let t = bake_cube_multi("night", &pick(TexFormat::Bc4, TexFormat::R8), cfg.night, ss, &|d| {
+        [src.night.sample(d, 0), 0.0, 0.0, 0.0]
+    });
     emit("night", t, log)?;
     // r coverage, g cloud-top height (0 = unknown; at least one code above 0 where known)
     let t = bake_cube_multi("clouds", &pick(TexFormat::Bc5, TexFormat::Rg8), cfg.clouds, ss, &|d| {
@@ -420,10 +476,16 @@ pub fn height_from_ktx2(k: &crate::ktx2::Ktx2) -> Result<HeightCube, crate::ktx2
     if k.format != TexFormat::R16 || k.mips != 1 {
         return Err(Ktx2Error::Inconsistent("height.ktx2 must be R16, one level"));
     }
-    let num = |key: &str, d: f64| k.value(key).and_then(|v| std::str::from_utf8(v).ok()?.trim().parse().ok()).unwrap_or(d);
+    let num =
+        |key: &str, d: f64| k.value(key).and_then(|v| std::str::from_utf8(v).ok()?.trim().parse().ok()).unwrap_or(d);
     let data = k.decode_level_major()?;
     let texels = data.as_chunks::<2>().0.iter().map(|c| u16::from_le_bytes(*c)).collect();
-    Ok(HeightCube { size: k.size, texels, scale: num("planet.height_scale_m", 0.1), offset: num("planet.height_offset_m", 0.0) })
+    Ok(HeightCube {
+        size: k.size,
+        texels,
+        scale: num("planet.height_scale_m", 0.1),
+        offset: num("planet.height_offset_m", 0.0),
+    })
 }
 
 pub fn bake(src: &Sources, cfg: &BakeConfig, log: &mut dyn FnMut(&str)) -> PlanetPack {

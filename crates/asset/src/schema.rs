@@ -220,38 +220,44 @@ impl Writer {
         let fut = self.test_future_fields;
         let future = |t: TableB| if fut { t.with(15, Field::U32(0xDEAD_BEEF)) } else { t };
         let build = |b: &PendingBrick| {
-                let mut t = TableB::default().with(brick::KEY, Field::Struct(key_bytes(b.coord), 8));
-                if let Some((h, log)) = &b.mesh {
-                    let mb = TableB::default()
-                        .with(meshb::VERTEX_COUNT, Field::U32(h.vertex_count))
-                        .with(meshb::INDEX_COUNT, Field::U32(h.index_count))
-                        .with(meshb::QBITS, Field::U8(h.qbits))
-                        .with(meshb::CONN, Field::U8(h.conn))
-                        .with(meshb::NORMAL_BITS, Field::U8(h.normal_bits))
-                        .with(meshb::FLAGS, Field::U8(h.flags))
-                        .with(meshb::RANS, Field::Bytes(log.encode(&models), 4))
-                        .with(meshb::BITS, Field::Bytes(log.bits.finished(), 4))
-                        .with(meshb::FSHIFT, Field::U8(h.fshift));
-                    t.set(brick::MESH, Field::Table(Box::new(future(mb))));
-                }
-                if let Some((h, log)) = &b.samples {
-                    let sb = TableB::default()
-                        .with(sampleb::N, Field::U16(h.n))
-                        .with(sampleb::FACE_MASK, Field::U8(h.face_mask))
-                        .with(sampleb::RANS, Field::Bytes(log.encode(&models), 4))
-                        .with(sampleb::BITS, Field::Bytes(log.bits.finished(), 4));
-                    // full payloads omit the field (default 0): byte-identical to minor-1 blobs
-                    let sb = if h.band != 0 { sb.with(sampleb::BAND, Field::U32(h.band)) } else { sb };
-                    t.set(brick::SAMPLES, Field::Table(Box::new(sb)));
-                }
-                if let Some((v, i)) = &b.raw {
-                    let rb = TableB::default().with(raw::VERTICES, Field::Bytes(v.clone(), 256)).with(raw::INDICES, Field::Bytes(i.clone(), 256));
-                    t.set(brick::RAW, Field::Table(Box::new(rb)));
-                }
-                future(t)
-            };
+            let mut t = TableB::default().with(brick::KEY, Field::Struct(key_bytes(b.coord), 8));
+            if let Some((h, log)) = &b.mesh {
+                let mb = TableB::default()
+                    .with(meshb::VERTEX_COUNT, Field::U32(h.vertex_count))
+                    .with(meshb::INDEX_COUNT, Field::U32(h.index_count))
+                    .with(meshb::QBITS, Field::U8(h.qbits))
+                    .with(meshb::CONN, Field::U8(h.conn))
+                    .with(meshb::NORMAL_BITS, Field::U8(h.normal_bits))
+                    .with(meshb::FLAGS, Field::U8(h.flags))
+                    .with(meshb::RANS, Field::Bytes(log.encode(&models), 4))
+                    .with(meshb::BITS, Field::Bytes(log.bits.finished(), 4))
+                    .with(meshb::FSHIFT, Field::U8(h.fshift));
+                t.set(brick::MESH, Field::Table(Box::new(future(mb))));
+            }
+            if let Some((h, log)) = &b.samples {
+                let sb = TableB::default()
+                    .with(sampleb::N, Field::U16(h.n))
+                    .with(sampleb::FACE_MASK, Field::U8(h.face_mask))
+                    .with(sampleb::RANS, Field::Bytes(log.encode(&models), 4))
+                    .with(sampleb::BITS, Field::Bytes(log.bits.finished(), 4));
+                // full payloads omit the field (default 0): byte-identical to minor-1 blobs
+                let sb = if h.band != 0 { sb.with(sampleb::BAND, Field::U32(h.band)) } else { sb };
+                t.set(brick::SAMPLES, Field::Table(Box::new(sb)));
+            }
+            if let Some((v, i)) = &b.raw {
+                let rb = TableB::default()
+                    .with(raw::VERTICES, Field::Bytes(v.clone(), 256))
+                    .with(raw::INDICES, Field::Bytes(i.clone(), 256));
+                t.set(brick::RAW, Field::Table(Box::new(rb)));
+            }
+            future(t)
+        };
         // Miri's Stacked Borrows flags crossbeam-epoch (rayon's deque) itself; run serially there
-        let bricks: Vec<TableB> = if cfg!(miri) { self.bricks.iter().map(build).collect() } else { self.bricks.par_iter().map(build).collect() };
+        let bricks: Vec<TableB> = if cfg!(miri) {
+            self.bricks.iter().map(build).collect()
+        } else {
+            self.bricks.par_iter().map(build).collect()
+        };
         let chunks: Vec<TableB> = self
             .insts
             .iter()
@@ -332,7 +338,8 @@ impl<'a> File<'a> {
         if major != MAJOR {
             return Err(VerifyError::UnsupportedVersion { major });
         }
-        let grid = BrickGrid::new(r.u16(root::BRICK_SIZE, 32) as u32, r.f64(root::VOXEL_M, 0.5)).map_err(|_| bad("Root", root::BRICK_SIZE))?;
+        let grid = BrickGrid::new(r.u16(root::BRICK_SIZE, 32) as u32, r.f64(root::VOXEL_M, 0.5))
+            .map_err(|_| bad("Root", root::BRICK_SIZE))?;
         let mb = v.bytes(&r, root::MODELS, 2, 4)?.ok_or(bad("Root", root::MODELS))?;
         if mb.len() < BASE_MODELS * MAX_ALPHABET * 2 {
             return Err(bad("Root", root::MODELS));
@@ -366,7 +373,15 @@ impl<'a> File<'a> {
             let mesh = match v.table(&t, brick::MESH, 1)? {
                 None => None,
                 Some(m) => {
-                    for (id, sz) in [(meshb::VERTEX_COUNT, 4), (meshb::INDEX_COUNT, 4), (meshb::QBITS, 1), (meshb::CONN, 1), (meshb::NORMAL_BITS, 1), (meshb::FLAGS, 1), (meshb::FSHIFT, 1)] {
+                    for (id, sz) in [
+                        (meshb::VERTEX_COUNT, 4),
+                        (meshb::INDEX_COUNT, 4),
+                        (meshb::QBITS, 1),
+                        (meshb::CONN, 1),
+                        (meshb::NORMAL_BITS, 1),
+                        (meshb::FLAGS, 1),
+                        (meshb::FSHIFT, 1),
+                    ] {
                         v.scalar(&m, id, sz, sz)?;
                     }
                     let h = MeshHeader {
@@ -379,7 +394,10 @@ impl<'a> File<'a> {
                         flags: m.u8(meshb::FLAGS, 0),
                         fshift: m.u8(meshb::FSHIFT, 0),
                     };
-                    if h.vertex_count > limits.max_vertices || h.index_count > limits.max_indices || !h.index_count.is_multiple_of(3) {
+                    if h.vertex_count > limits.max_vertices
+                        || h.index_count > limits.max_indices
+                        || !h.index_count.is_multiple_of(3)
+                    {
                         return Err(VerifyError::TooLarge);
                     }
                     if h.qbits > 8 || h.conn > 1 || !(2..=16).contains(&h.normal_bits) || h.flags > 3 || h.fshift > 16 {
@@ -396,7 +414,11 @@ impl<'a> File<'a> {
                     v.scalar(&s, sampleb::N, 2, 2)?;
                     v.scalar(&s, sampleb::FACE_MASK, 1, 1)?;
                     v.scalar(&s, sampleb::BAND, 4, 4)?;
-                    let h = SampleHeader { n: s.u16(sampleb::N, 0), face_mask: s.u8(sampleb::FACE_MASK, 0), band: s.u32(sampleb::BAND, 0) };
+                    let h = SampleHeader {
+                        n: s.u16(sampleb::N, 0),
+                        face_mask: s.u8(sampleb::FACE_MASK, 0),
+                        band: s.u32(sampleb::BAND, 0),
+                    };
                     if h.n == 0 || h.n as usize > samples::MAX_N || h.face_mask >= 64 || h.band > voxel::DQ_MAX as u32 {
                         return Err(bad("SampleBlob", sampleb::N));
                     }

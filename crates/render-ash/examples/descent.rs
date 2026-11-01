@@ -69,7 +69,9 @@ fn arg(k: &str) -> Option<String> {
 }
 
 fn read_png(p: &Path) -> (u32, u32, usize, Vec<u8>) {
-    let dec = png::Decoder::new(std::io::BufReader::new(std::fs::File::open(p).unwrap_or_else(|e| panic!("{}: {e}", p.display()))));
+    let dec = png::Decoder::new(std::io::BufReader::new(
+        std::fs::File::open(p).unwrap_or_else(|e| panic!("{}: {e}", p.display())),
+    ));
     let mut r = dec.read_info().unwrap();
     let mut buf = vec![0; r.output_buffer_size().unwrap()];
     let info = r.next_frame(&mut buf).unwrap();
@@ -99,7 +101,8 @@ fn json_num(s: &str, k: &str) -> Option<f64> {
 fn run(mut c: Command, log: &Path) -> f64 {
     let t = std::time::Instant::now();
     let out = c.output().expect("spawn");
-    std::fs::write(log, [format!("{c:?}\n").as_bytes(), out.stdout.as_slice(), out.stderr.as_slice()].concat()).unwrap();
+    std::fs::write(log, [format!("{c:?}\n").as_bytes(), out.stdout.as_slice(), out.stderr.as_slice()].concat())
+        .unwrap();
     assert!(out.status.success(), "{:?} failed, see {}", c, log.display());
     t.elapsed().as_secs_f64() * 1e3
 }
@@ -164,32 +167,50 @@ fn colour_match(p: &[u8], pch: usize, sky: &[u8], m: &[u8], k: f64) -> Vec<[f32;
     let n = (W * H) as usize;
     let lin = |b: u8| descent::srgb_to_linear(b as f32 / 255.0);
     let wgt = |i: usize| (m[i * 4 + 3] as f32 / 255.0) * (1.0 - sky[i] as f32 / 255.0);
-    let pp: Vec<[f32; 4]> = (0..n).map(|i| {
-        let q = wgt(i);
-        [lin(p[i * pch]) * q, lin(p[i * pch + 1]) * q, lin(p[i * pch + 2]) * q, q]
-    }).collect();
-    let mm: Vec<[f32; 4]> = (0..n).map(|i| {
-        let q = wgt(i);
-        [lin(m[i * 4]) * q, lin(m[i * 4 + 1]) * q, lin(m[i * 4 + 2]) * q, q]
-    }).collect();
+    let pp: Vec<[f32; 4]> = (0..n)
+        .map(|i| {
+            let q = wgt(i);
+            [lin(p[i * pch]) * q, lin(p[i * pch + 1]) * q, lin(p[i * pch + 2]) * q, q]
+        })
+        .collect();
+    let mm: Vec<[f32; 4]> = (0..n)
+        .map(|i| {
+            let q = wgt(i);
+            [lin(m[i * 4]) * q, lin(m[i * 4 + 1]) * q, lin(m[i * 4 + 2]) * q, q]
+        })
+        .collect();
     let r = (W as usize / 80).max(1);
     let (bp, bm) = (blur4(&pp, r), blur4(&mm, r));
-    (0..n).map(|i| {
-        let (a, b) = (bp[i], bm[i]);
-        if a[3] < 1e-3 || k <= 0.0 {
-            return [1.0; 3];
-        }
-        [0, 1, 2].map(|c| {
-            let ratio = ((a[c] + 1e-4) / (b[c] + 1e-4)).clamp(0.33, 3.0);
-            1.0 + (ratio - 1.0) * k as f32
+    (0..n)
+        .map(|i| {
+            let (a, b) = (bp[i], bm[i]);
+            if a[3] < 1e-3 || k <= 0.0 {
+                return [1.0; 3];
+            }
+            [0, 1, 2].map(|c| {
+                let ratio = ((a[c] + 1e-4) / (b[c] + 1e-4)).clamp(0.33, 3.0);
+                1.0 + (ratio - 1.0) * k as f32
+            })
         })
-    }).collect()
+        .collect()
 }
 
-fn composite(p: &[u8], pch: usize, sky: &[u8], m: Option<&[u8]>, w: &Handoff, gain: Option<&[[f32; 3]]>, out: &mut [u8]) -> Seam {
+fn composite(
+    p: &[u8],
+    pch: usize,
+    sky: &[u8],
+    m: Option<&[u8]>,
+    w: &Handoff,
+    gain: Option<&[[f32; 3]]>,
+    out: &mut [u8],
+) -> Seam {
     let mut seam = Seam { blend_px: 0, terrain_diff: [0.0; 3], lum: (0.0, 0.0), matched_diff: [0.0; 3] };
     let mut n = 0usize;
-    let lum = |c: [f32; 3]| 0.2126 * descent::srgb_to_linear(c[0]) + 0.7152 * descent::srgb_to_linear(c[1]) + 0.0722 * descent::srgb_to_linear(c[2]);
+    let lum = |c: [f32; 3]| {
+        0.2126 * descent::srgb_to_linear(c[0])
+            + 0.7152 * descent::srgb_to_linear(c[1])
+            + 0.0722 * descent::srgb_to_linear(c[2])
+    };
     for i in 0..(W * H) as usize {
         let pc = [0, 1, 2].map(|c| p[i * pch + c] as f32 / 255.0);
         let ps = sky[i] as f32 / 255.0;
@@ -198,7 +219,9 @@ fn composite(p: &[u8], pch: usize, sky: &[u8], m: Option<&[u8]>, w: &Handoff, ga
             Some(m) => {
                 let mc0 = [0, 1, 2].map(|c| m[i * 4 + c] as f32 / 255.0);
                 let mc = match gain {
-                    Some(g) => [0, 1, 2].map(|c| descent::linear_to_srgb((descent::srgb_to_linear(mc0[c]) * g[i][c]).min(1.0))),
+                    Some(g) => {
+                        [0, 1, 2].map(|c| descent::linear_to_srgb((descent::srgb_to_linear(mc0[c]) * g[i][c]).min(1.0)))
+                    }
                     None => mc0,
                 };
                 let a = m[i * 4 + 3] as f32 / 255.0;
@@ -234,9 +257,10 @@ fn main() {
     // the vista's ground exactly as the quality example computes it
     let ground = field.height(7700.0, -4200.0, 0.5);
     let ds = Descent::alps(ground);
-    let heights: Vec<f64> = arg("--heights")
-        .map(|v| v.split(',').map(|t| t.trim().parse().expect("--heights")).collect())
-        .unwrap_or_else(|| vec![400_000.0, 150_000.0, 60_000.0, 30_000.0, 15_000.0, 7_000.0, 3_000.0, 1_200.0, 400.0, 40.0]);
+    let heights: Vec<f64> =
+        arg("--heights").map(|v| v.split(',').map(|t| t.trim().parse().expect("--heights")).collect()).unwrap_or_else(
+            || vec![400_000.0, 150_000.0, 60_000.0, 30_000.0, 15_000.0, 7_000.0, 3_000.0, 1_200.0, 400.0, 40.0],
+        );
     let only: Option<Vec<usize>> = arg("--only").map(|v| v.split(',').map(|t| t.trim().parse().unwrap()).collect());
     let out = PathBuf::from(arg("--out").unwrap_or("out/quality/steps".into()));
     let work = PathBuf::from(arg("--work").unwrap_or("out/quality/descent".into()));
@@ -255,14 +279,27 @@ fn main() {
     let no_ground = no_graft || std::env::args().any(|a| a == "--no-ground");
     let ground_path = arg("--ground").unwrap_or(ground::GROUND_FILE.into());
     let map = planet::graft::GraftMap::from_frames(&ds.frames);
-    let gfield = if no_ground { field.clone() } else { Alpine::grounded(7, std::sync::Arc::new(ground::load_or_bake(&ground_path, &map))) };
+    let gfield = if no_ground {
+        field.clone()
+    } else {
+        Alpine::grounded(7, std::sync::Arc::new(ground::load_or_bake(&ground_path, &map)))
+    };
     let graft_default = if no_ground { "/workspace/data/earth/graft_alps.grf" } else { ground::GRAFT_FILE };
     let graft_path = PathBuf::from(arg("--graft").unwrap_or(graft_default.into()));
     if !no_graft && !composite_only && !graft_path.exists() {
         let t = std::time::Instant::now();
         let img = (!no_ground).then(ground::Imagery::load);
-        let f = img.as_ref().map(|im| move |la: f64, lo: f64, n: glam::DVec3, fine: bool, st: f64| im.albedo(la, lo, n, fine, st));
-        let g = graft::bake(&gfield, &map, 46.10, 7.60, descent::dir_of(SUN_AZ, SUN_EL), f.as_ref().map(|f| f as graft::ImageryFn));
+        let f = img
+            .as_ref()
+            .map(|im| move |la: f64, lo: f64, n: glam::DVec3, fine: bool, st: f64| im.albedo(la, lo, n, fine, st));
+        let g = graft::bake(
+            &gfield,
+            &map,
+            46.10,
+            7.60,
+            descent::dir_of(SUN_AZ, SUN_EL),
+            f.as_ref().map(|f| f as graft::ImageryFn),
+        );
         if let Some(d) = graft_path.parent() {
             std::fs::create_dir_all(d).unwrap();
         }
@@ -289,9 +326,27 @@ fn main() {
         let mut t_planet = f64::NAN;
         if !composite_only {
             let mut c = Command::new(bin.join("earth"));
-            c.args(["--pack", &pack, "--out", work.to_str().unwrap(), "--name", &format!("{name}_planet"), "--size", &format!("{W}x{H}"), "--ss", "2"]);
-            c.args(["--fov", &format!("{:.6}", FOV.to_degrees()), "--cam-ecef", &format!("{},{},{}", f3(cam), f3(pose.fwd), f3(pose.up_hint))]);
-            c.env("EXPOSURE", format!("{:.6}", w.exposure)).env("SUN_LAT", format!("{sun_lat:.6}")).env("SUN_LON", format!("{sun_lon:.6}"));
+            c.args([
+                "--pack",
+                &pack,
+                "--out",
+                work.to_str().unwrap(),
+                "--name",
+                &format!("{name}_planet"),
+                "--size",
+                &format!("{W}x{H}"),
+                "--ss",
+                "2",
+            ]);
+            c.args([
+                "--fov",
+                &format!("{:.6}", FOV.to_degrees()),
+                "--cam-ecef",
+                &format!("{},{},{}", f3(cam), f3(pose.fwd), f3(pose.up_hint)),
+            ]);
+            c.env("EXPOSURE", format!("{:.6}", w.exposure))
+                .env("SUN_LAT", format!("{sun_lat:.6}"))
+                .env("SUN_LON", format!("{sun_lon:.6}"));
             c.env("MIE", "8").env("SKY_MASK", "1");
             c.env("HOLE", format!("{},{},{}", a.0, a.1, hole_deg(pose.h_m)));
             if no_graft {
@@ -302,7 +357,26 @@ fn main() {
                     c.env("GROUND", &ground_path);
                 }
             }
-            for k in ["GRAFT_ALB", "GRAFT_AO", "GRAFT_TINT", "GRAFT_TINT_KM", "MESO_TOP", "MESO_AMP", "MESO_BIAS", "MESO_FINE", "MESO_GAMMA", "OCEAN_HAZE", "HAZE_ANGSTROM", "HAZE_SSA", "HAZE_MASK_KM", "CLOUD_FEATHER", "CLOUD_FEATHER_MIX", "HOLE_NOISE", "HAZE_DUST", "EPIC_GRADE"] {
+            for k in [
+                "GRAFT_ALB",
+                "GRAFT_AO",
+                "GRAFT_TINT",
+                "GRAFT_TINT_KM",
+                "MESO_TOP",
+                "MESO_AMP",
+                "MESO_BIAS",
+                "MESO_FINE",
+                "MESO_GAMMA",
+                "OCEAN_HAZE",
+                "HAZE_ANGSTROM",
+                "HAZE_SSA",
+                "HAZE_MASK_KM",
+                "CLOUD_FEATHER",
+                "CLOUD_FEATHER_MIX",
+                "HOLE_NOISE",
+                "HAZE_DUST",
+                "EPIC_GRADE",
+            ] {
                 if let Ok(v) = std::env::var(k) {
                     c.env(k, v);
                 }
@@ -319,7 +393,9 @@ fn main() {
                 // the vista exactly as the default view specifies it
                 c.env("CAM_H", "40");
             } else {
-                c.env("CAM_X", format!("{:.6}", pose.world.x)).env("CAM_Z", format!("{:.6}", pose.world.z)).env("CAM_Y", format!("{:.6}", pose.world.y));
+                c.env("CAM_X", format!("{:.6}", pose.world.x))
+                    .env("CAM_Z", format!("{:.6}", pose.world.z))
+                    .env("CAM_Y", format!("{:.6}", pose.world.y));
             }
             c.env("CAM_YAW", format!("{:.9}", pose.yaw)).env("CAM_PITCH", format!("{:.9}", pose.pitch));
             // the aerial-only parts of the layer fade out toward the vista; at the vista itself
@@ -336,12 +412,17 @@ fn main() {
             } else {
                 c.env("GROUND", &ground_path).env("GROUND_ALB", graft_path.to_str().unwrap());
             }
-            c.env("SUN_AZ", format!("{SUN_AZ:.9}")).env("SUN_EL", format!("{SUN_EL:.9}")).env("AP_KM", format!("{:.4}", w.ap_km));
+            c.env("SUN_AZ", format!("{SUN_AZ:.9}"))
+                .env("SUN_EL", format!("{SUN_EL:.9}"))
+                .env("AP_KM", format!("{:.4}", w.ap_km));
             c.env("SPLITS", w.splits.map(|v| format!("{v:.1}")).join(","));
             // one exposure per frame for both layers: the quality example's 1.1 is the planet's
             // EXPOSURE_GROUND, so the mountains follow the planet's ramp above 20 km
             c.env("EXPOSURE", format!("{:.6}", mountains_exposure(&w)));
-            c.env("AUTO_EXPOSURE", "0").env("SHADOW_CACHE", "0").env("QUALITY_FRAMES", "1").env("QUALITY_OUT", ml.to_str().unwrap());
+            c.env("AUTO_EXPOSURE", "0")
+                .env("SHADOW_CACHE", "0")
+                .env("QUALITY_FRAMES", "1")
+                .env("QUALITY_OUT", ml.to_str().unwrap());
             t_mtn = run(c, &work.join(format!("{name}_mtn.log")));
         }
         let (pw, ph, pch, p) = read_png(&pl);
@@ -354,7 +435,11 @@ fn main() {
             if mch == 3 { m.chunks(3).flat_map(|c| [c[0], c[1], c[2], 255]).collect() } else { m }
         });
         let mut img = vec![0u8; (W * H * 3) as usize];
-        let mk = if no_graft || std::env::var("COLOUR_MATCH").as_deref() == Ok("0") { 0.0 } else { descent::colour_match(pose.h_m) };
+        let mk = if no_graft || std::env::var("COLOUR_MATCH").as_deref() == Ok("0") {
+            0.0
+        } else {
+            descent::colour_match(pose.h_m)
+        };
         let gain = match &m {
             Some(m) if mk > 0.0 => Some(colour_match(&p, pch, &sky, m, mk)),
             _ => None,
@@ -363,7 +448,8 @@ fn main() {
         let png = out.join(format!("{name}.png"));
         write_png(&png, W, H, &img);
         let pj = std::fs::read_to_string(work.join(format!("{name}_planet.json"))).unwrap_or_default();
-        let mj = if use_m { std::fs::read_to_string(ml.with_extension("json")).unwrap_or_default() } else { String::new() };
+        let mj =
+            if use_m { std::fs::read_to_string(ml.with_extension("json")).unwrap_or_default() } else { String::new() };
         let num = |v: f64| if v.is_finite() { format!("{v:.3}") } else { "null".into() };
         let ll = planet::cube::dir_latlon(cam);
         let json = format!(
@@ -373,13 +459,51 @@ fn main() {
 \"planet_gpu_ms\":{},\"mountains_gpu_frame_ms\":{},\"mountains_build_ms\":{},\"planet_wall_ms\":{},\"mountains_wall_ms\":{},\"mountains_validation_errors\":{},\
 \"device\":\"lavapipe (llvmpipe, CPU): timings are not real-GPU numbers\",\"sun\":{{\"az\":{SUN_AZ:.4},\"el\":{SUN_EL},\"subsolar\":[{sun_lat:.4},{sun_lon:.4}]}},\
 \"planet_env\":{{\"MIE\":8,\"HOLE\":[{},{},{:.4}],\"FLATTEN_km\":[{},{}],\"FLATTEN_h_m\":{FLAT_H},\"FLATTEN_strength\":{:.4},\"graft\":{},\"graft_strength\":{:.4}}},\"png\":\"{}\"}}",
-            pose.s.max(0.0) + 0.0, mountains_exposure(&w), pose.h_m, cam.length() - planet::EARTH_RADIUS_M, pose.ground_dist_m, ll.0, ll.1, pose.world.x, pose.world.y, pose.world.z, pose.yaw, pose.pitch,
-            w.ground, w.sky, w.up, w.ap_km, w.exposure, w.splits,
-            pl.display(), if use_m { format!("\"{}\"", ml.display()) } else { "null".into() },
-            seam.blend_px, num(seam.terrain_diff[0]), num(seam.terrain_diff[1]), num(seam.terrain_diff[2]), num(seam.lum.0), num(seam.lum.1), num(seam.matched_diff[0]), num(seam.matched_diff[1]), num(seam.matched_diff[2]), mk,
-            json_num(&pj, "gpu_ms").map_or("null".into(), num), json_num(&mj, "gpu_frame_ms").map_or("null".into(), num), json_num(&mj, "build_ms").map_or("null".into(), num),
-            num(t_planet), num(t_mtn), json_num(&mj, "validation_errors").map_or("null".into(), num),
-            a.0, a.1, hole_deg(pose.h_m), FLAT_KM.0, FLAT_KM.1, if no_graft { w.ground } else { 0.0 }, if no_graft { "null".into() } else { format!("\"{}\"", graft_path.display()) }, if no_graft { 0.0 } else { planet::graft::strength(pose.h_m) }, png.display()
+            pose.s.max(0.0) + 0.0,
+            mountains_exposure(&w),
+            pose.h_m,
+            cam.length() - planet::EARTH_RADIUS_M,
+            pose.ground_dist_m,
+            ll.0,
+            ll.1,
+            pose.world.x,
+            pose.world.y,
+            pose.world.z,
+            pose.yaw,
+            pose.pitch,
+            w.ground,
+            w.sky,
+            w.up,
+            w.ap_km,
+            w.exposure,
+            w.splits,
+            pl.display(),
+            if use_m { format!("\"{}\"", ml.display()) } else { "null".into() },
+            seam.blend_px,
+            num(seam.terrain_diff[0]),
+            num(seam.terrain_diff[1]),
+            num(seam.terrain_diff[2]),
+            num(seam.lum.0),
+            num(seam.lum.1),
+            num(seam.matched_diff[0]),
+            num(seam.matched_diff[1]),
+            num(seam.matched_diff[2]),
+            mk,
+            json_num(&pj, "gpu_ms").map_or("null".into(), num),
+            json_num(&mj, "gpu_frame_ms").map_or("null".into(), num),
+            json_num(&mj, "build_ms").map_or("null".into(), num),
+            num(t_planet),
+            num(t_mtn),
+            json_num(&mj, "validation_errors").map_or("null".into(), num),
+            a.0,
+            a.1,
+            hole_deg(pose.h_m),
+            FLAT_KM.0,
+            FLAT_KM.1,
+            if no_graft { w.ground } else { 0.0 },
+            if no_graft { "null".into() } else { format!("\"{}\"", graft_path.display()) },
+            if no_graft { 0.0 } else { planet::graft::strength(pose.h_m) },
+            png.display()
         );
         std::fs::write(png.with_extension("json"), &json).unwrap();
         println!("{json}");
