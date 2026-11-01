@@ -2785,3 +2785,78 @@ python3 tools/solar_hud.py out/quality/steps SS1_overview SS1_inner SS1_path_00 
 
 **Saturn 2026 shadow.** With the Sun 6.5° from the ring plane the globe's shadow on the rings is long: in `SS1_saturn` it cuts the left ansa with a straight edge out to the F ring. That is geometry, not clipping (compare `SS1_saturn_2017`, Sun 26° up, short shadow behind the globe).
 
+
+## Solar system round 2: visibility layer, deep exposures, calibrated Earth handoff (1 Nov 2026)
+
+```bash
+export LD_LIBRARY_PATH=/workspace/tools_ext/KTX-Software-4.4.2-Linux-x86_64/lib:$LD_LIBRARY_PATH
+cargo build --release -p render-ash --example earth --example solar
+./target/release/examples/solar --shot SS2            # SS1 / all = the round-1 shots, unchanged
+python3 tools/solar_vis.py out/quality/steps SS2_overview SS2_overview_deep SS2_inner SS2_inner_deep \
+  SS2_path_00 SS2_path_01 SS2_path_02 SS2_path_03 SS2_path_04
+EARTH_DISC=1 ./target/release/examples/solar --shot SS2_handoff_r24_lod,SS2_handoff_r24_planet   # disc-mean probe
+```
+
+**Goal.** Make the true-scale system readable without faking it. The physical image (true scale, true
+brightness, EPIC_GRADE off) is untouched; everything that helps you read it sits on top as marked annotation
+or in a panel below.
+
+**Visibility layer (`<shot>_vis.png`, 1920×1380 = the 1080 p image + a 300 px panel).**
+- Loupes: one per body under 12 px, a *true render* through a long lens, not an icon. The camera moves along
+  the same line of sight, so phase and lighting are unchanged and the f32 shader keeps its precision. Exposure
+  is 2.4·r², i.e. the irradiance is normalised to 1 AU and the albedo kept, so Neptune and Mercury share one
+  scale. Each caption gives V mag, angular size, magnification, phase and distance. Large phase angles are
+  real: from 50 AU, Jupiter (5.2 AU from the Sun, 47.6 AU from the camera) is at 115°, so it shows a crescent.
+- Inner-system zoom inset: the same camera with a narrower fov (Mars's orbit fills it), its own orbits, a box
+  on the main image and connecting lines.
+- HUD v2 (PIL, 2× supersampled): orbits clipped to the image, label collision avoidance with leaders,
+  "Earth + Moon" merged when they are closer than the label, and a scale bar in AU / km / light-time. The scale
+  is taken at the distance of the body nearest the image centre (the Sun on overviews, Mercury, the Moon or the Earth on the
+  approach) and labelled with that body.
+- Deep exposures: a perfect occulter over the Sun plus a long exposure (coronagraph/LASCO style).
+  `SS2_overview_deep` (occulter 5 px, ×300) shows Jupiter and Saturn as clear points and the BSC5 star field.
+  `SS2_inner_deep` (occulter 14 px, ×30; at ×300 the K+F corona swamped the frame) shows the inner planets as
+  points around a corona glow.
+
+**Earth handoff calibration (`Shot::earth_cal`, SS2 shots only).** A disc-mean probe (`EARTH_DISC=1`) from
+the EPIC direction at 24 px measured radiance per unit exposure:
+
+| Earth source | disc mean | vs planet renderer |
+|---|---|---|
+| planet renderer (the Earth rounds' look) | 0.0513 | reference |
+| system LOD (SS1) | 0.0708 | **+38 %**: SS1 had a visible brightness step at 24 px |
+| flux point, Mallama p = 0.434 | 0.131 | +155 % |
+
+The planet renderer is taken as the reference Earth. The LOD's Earth tint is now an output gain
+(`system.slang`, kind 5; it multiplies the final radiance, so clouds and veil scale too). It is set to
+[0.766, 0.715, 0.714]. The flux point uses the planet renderer's effective albedo (gain 0.392, so p ≈ 0.17) and its
+disc colour. The handoff now cross-fades between 20 and 28 px instead of switching at 24 px. Result
+(`SS2_handoff_sheet.png`): LOD vs planet within +4.5 % at 12 px, +0.9 % at 22 px, 0.0 % at 24 px and −0.2 % at 26 px;
+the shipped cross-fade stays within 0.7 % across the band, against +38 % before. SS1 shots keep the old
+values (tint 1, so this is exact).
+
+**Shots / files** (`out/quality/steps/`): `SS2_{overview,inner,path_00..04}` (+ `_vis`, `_zoom`,
+`_loupe_<body>`), `SS2_{overview,inner}_deep`, and `SS2_handoff_r{12,18,22,24,26,32}_{lod_ss1,lod,planet,auto}`.
+Sheets: `SS2_vis_sheet.png`, `SS2_before_after.png` (SS1 HUD vs SS2 vis) and `SS2_handoff_sheet.png`. Report:
+`out/quality/SS2_report.md`.
+
+**Numbers (lavapipe).** System pass 149–185 ms GPU per main view; `--shot SS2` (33 shots, 52 loupe/zoom
+renders, 24 Earth-renderer runs) takes 50 s wall. Validation errors are 0 on all 33.
+
+**Identity.** `--shot SS1`: 21/21 PNGs are byte-identical to the pre-SS2 binary (`/workspace/checkpoints/ss2_base/out`,
+`cmp`). One fix was needed: SS1_sun's camera sits at the Earth's centre, which gave a NaN radius, now treated as 0.
+
+**Gates** (`/workspace/checkpoints/ss2_gates.log`): `cargo fmt --check`, clippy `-D warnings` (default and
+`--all-features`), and `cargo test --release --workspace` with 149 passed / 0 failed.
+
+**Open decision: absolute Earth albedo.** The planet renderer's Earth (exposure 2.4, tuned by eye to EPIC)
+has an effective geometric albedo of about 0.17 at this phase. Mallama/Bond-consistent is 0.434. SS2 makes everything
+consistent with the renderer, so the Earth is about 1 mag fainter than physical. The loupe captions still
+print the Mallama V. The SS1 note "Moon albedo 0.12 vs Earth 0.43" is really ~0.12 vs ~0.17 as drawn. To make the
+Earth physical, the whole Earth path (the planet renderer and the EPIC comparison exposure) would need re-scaling
+by ~2.5×.
+
+**Known gaps (round 2).** The point gain was calibrated at one phase (EPIC, ~5°), so the point↔disc match at
+large phase angles is unverified. The Moon loupes show a small dark spot on the far side, most likely Tsiolkovsky
+crater (not verified against the map). Uranus and Neptune stay faint even at ×300 (true magnitude ~8–10 at 50 AU),
+so the loupes carry them. Stars are BSC5 (V ≤ 6.5) only, so deep frames lack fainter stars.

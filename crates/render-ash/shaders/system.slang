@@ -158,7 +158,8 @@ float3 shade_body(SParams* p, int i, SBody b, float3 pb, float3 w, float3 d, flo
     float2 uv = float2(0.5 + lon / (2.0 * PI), 0.5 - lat / PI);
     float foot = t * px_rad / max(mu, 0.05);                  // world footprint of a pixel (m)
     float lod = log2(max(foot * 2048.0 / (2.0 * PI * b.pos.w), 1e-6));
-    float3 alb = b.tint.rgb;
+    // the Earth's tint is an output gain (SS2 calibration to the planet renderer), applied at the end
+    float3 alb = kind == 5 ? float3(1.0) : b.tint.rgb;
     if (b.r1.w >= 0.0) alb *= tBody.SampleLevel(float3(uv, b.r1.w), lod).rgb;   // R8G8B8A8_SRGB: decoded by the sampler
     alb *= b.shade.x;
     if (kind == 0) {
@@ -216,7 +217,7 @@ float3 shade_body(SParams* p, int i, SBody b, float3 pb, float3 w, float3 d, flo
         float3 hcol = lerp(float3(1.0), alb / max(dot(alb, float3(0.2126, 0.7152, 0.0722)), 1e-4), b.extra.z);
         col += E / PI * vis * lit * veil * hcol * 0.25;
     }
-    return col;
+    return kind == 5 ? col * b.tint.rgb : col;
 }
 
 // Haze / atmosphere shell for rays that pass just outside a body's limb (b = closest approach / a).
