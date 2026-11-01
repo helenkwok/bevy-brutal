@@ -634,18 +634,23 @@ fn pipeline(d: &ash::Device, layout: vk::PipelineLayout, kind: Kind, eq: bool) -
                 .depth_compare_op(vk::CompareOp::GREATER_OR_EQUAL),
         };
         let blend = [vk::PipelineColorBlendAttachmentState::default().color_write_mask(vk::ColorComponentFlags::RGBA)];
+        // Shadow passes render with no colour attachment at all.
         let depth_only = matches!(
             kind,
-            Kind::Shadow
-                | Kind::InstShadow
-                | Kind::InstShadowAlpha
-                | Kind::ImpShadow
-                | Kind::ImpShadowFar
-                | Kind::PreInst
-                | Kind::PreInstAlpha
-                | Kind::PreImp
+            Kind::Shadow | Kind::InstShadow | Kind::InstShadowAlpha | Kind::ImpShadow | Kind::ImpShadowFar
         );
-        let cb = vk::PipelineColorBlendStateCreateInfo::default().attachments(if depth_only { &[] } else { &blend });
+        // The depth prepass draws inside the main pass, which has one colour attachment: without
+        // dynamicRenderingUnusedAttachments the pipeline must declare that attachment too
+        // (VUID-vkCmdDrawIndexedIndirect-colorAttachmentCount-06179), so keep it with writes masked off.
+        let prepass = matches!(kind, Kind::PreInst | Kind::PreInstAlpha | Kind::PreImp);
+        let no_writes =
+            [vk::PipelineColorBlendAttachmentState::default().color_write_mask(vk::ColorComponentFlags::empty())];
+        let attachments: &[vk::PipelineColorBlendAttachmentState] = match (depth_only, prepass) {
+            (true, _) => &[],
+            (false, true) => &no_writes,
+            (false, false) => &blend,
+        };
+        let cb = vk::PipelineColorBlendStateCreateInfo::default().attachments(attachments);
         let dyns = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
         let dy = vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dyns);
         let color_formats = [COLOR];

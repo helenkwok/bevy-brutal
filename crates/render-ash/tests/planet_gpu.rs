@@ -138,7 +138,10 @@ fn planet_renders_round_nan_free_and_resolves_night_radiance() {
         BackendConfig { max_instances: 16, extent: (64, 64), validation: true, ..Default::default() },
         None,
     ) {
-        Ok(b) => b,
+        Ok(b) => {
+            common::check_validation(&b.ctx);
+            b
+        }
         Err(e) => {
             common::skip_or_fail("AshBackend::new", &e);
             return;
@@ -204,7 +207,10 @@ fn cloud_window_clears_and_far_deck_gets_structure() {
         BackendConfig { max_instances: 16, extent: (64, 64), validation: true, ..Default::default() },
         None,
     ) {
-        Ok(b) => b,
+        Ok(b) => {
+            common::check_validation(&b.ctx);
+            b
+        }
         Err(e) => {
             common::skip_or_fail("AshBackend::new", &e);
             return;
@@ -258,6 +264,9 @@ fn cloud_window_clears_and_far_deck_gets_structure() {
     eprintln!("deck spread {s0:.4} (mean {m0:.4}) -> with meso {s1:.4} (mean {m1:.4})");
     assert!(s1 > 2.0 * s0 + 0.02, "far deck must gain structure: relative spread {s0:.4} -> {s1:.4}");
     assert!((m1 / m0 - 1.0).abs() < 0.35, "and keep its mean brightness: {m0} -> {m1}");
+    be.planet_free(tex);
+    be.planet_free(clear_tex);
+    drop(be); // teardown errors (leaked objects at vkDestroyDevice) count too
     let (e1, _) = message_counts();
     assert_eq!(e1, e0, "validation errors");
 }

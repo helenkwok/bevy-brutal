@@ -15,3 +15,18 @@ pub fn skip_or_fail(what: &str, err: &dyn std::fmt::Debug) {
     }
     eprintln!("SKIP: {what} failed (no usable Vulkan 1.3 device?): {err:?}");
 }
+
+/// True when `BRUTAL_REQUIRE_VALIDATION=1` (CI sets it after installing the Khronos layer).
+pub fn validation_required() -> bool {
+    std::env::var("BRUTAL_REQUIRE_VALIDATION").is_ok_and(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+}
+
+/// With `BRUTAL_REQUIRE_VALIDATION=1`, panic unless the Khronos validation layer *and*
+/// synchronization validation are active, so "zero validation errors" cannot pass vacuously.
+#[track_caller]
+pub fn check_validation(ctx: &render_ash::VkContext) {
+    if validation_required() {
+        assert!(ctx.validation_enabled, "BRUTAL_REQUIRE_VALIDATION=1 but VK_LAYER_KHRONOS_validation is not active");
+        assert!(ctx.sync_validation, "BRUTAL_REQUIRE_VALIDATION=1 but synchronization validation is not enabled");
+    }
+}

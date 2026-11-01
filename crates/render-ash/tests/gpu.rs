@@ -30,6 +30,7 @@ fn backend_fif(w: u32, h: u32, max_instances: usize, frames_in_flight: usize) ->
 fn backend_cfg(cfg: BackendConfig) -> Option<AshBackend> {
     match AshBackend::new(cfg, None) {
         Ok(b) => {
+            common::check_validation(&b.ctx);
             eprintln!(
                 "device: {} | validation: {} | sync validation: {} | scan: {:?} | subgroup: {:?}",
                 b.device_name(),
