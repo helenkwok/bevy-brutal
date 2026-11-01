@@ -14,12 +14,17 @@ fn b1_boulders_are_watertight_without_degenerate_or_flipped_triangles() {
             assert_eq!(t.closed_components, 1, "one solid piece: {t:?}");
             assert_eq!(t.negative_volume_components, 0, "no cavities");
             let n = t.triangles;
-            assert!(if cells == 20 { (600..4000).contains(&n) } else { (60..700).contains(&n) }, "seed {seed} cells {cells}: {n} triangles");
+            assert!(
+                if cells == 20 { (600..4000).contains(&n) } else { (60..700).contains(&n) },
+                "seed {seed} cells {cells}: {n} triangles"
+            );
             // every triangle's exact normal agrees with its vertex normals (outward)
             let m = &b.mesh;
             let bad = m.indices.as_chunks::<3>().0.iter().filter(|tr| {
                 let nn = tri_normal(m.ipos[tr[0] as usize], m.ipos[tr[1] as usize], m.ipos[tr[2] as usize]);
-                let g: f64 = (0..3).map(|k| tr.iter().map(|&i| m.vertices[i as usize].normal[k] as f64).sum::<f64>() * nn[k] as f64).sum();
+                let g: f64 = (0..3)
+                    .map(|k| tr.iter().map(|&i| m.vertices[i as usize].normal[k] as f64).sum::<f64>() * nn[k] as f64)
+                    .sum();
                 g <= 0.0
             });
             assert!(bad.count() * 50 <= n, "seed {seed}: vertex normals disagree with winding");
@@ -53,7 +58,10 @@ fn b2_boulders_are_deterministic_and_faceted() {
     for tr in m.indices.as_chunks::<3>().0.iter() {
         let nn = tri_normal(m.ipos[tr[0] as usize], m.ipos[tr[1] as usize], m.ipos[tr[2] as usize]);
         let l = ((nn[0] * nn[0] + nn[1] * nn[1] + nn[2] * nn[2]) as f64).sqrt();
-        let best = faces.iter().map(|f| (f[0] * nn[0] as f64 + f[1] * nn[1] as f64 + f[2] * nn[2] as f64) / l).fold(-1.0, f64::max);
+        let best = faces
+            .iter()
+            .map(|f| (f[0] * nn[0] as f64 + f[1] * nn[1] as f64 + f[2] * nn[2] as f64) / l)
+            .fold(-1.0, f64::max);
         total += l;
         if best > 20f64.to_radians().cos() {
             on += l;
@@ -64,7 +72,11 @@ fn b2_boulders_are_deterministic_and_faceted() {
     let f = Boulder::new(23);
     let mut worst = 0.0f64;
     for k in 0..2000 {
-        let p = [((k * 37) % 101) as f64 / 50.0 - 1.0, ((k * 53) % 97) as f64 / 48.0 - 1.0, ((k * 71) % 89) as f64 / 44.0 - 1.0];
+        let p = [
+            ((k * 37) % 101) as f64 / 50.0 - 1.0,
+            ((k * 53) % 97) as f64 / 48.0 - 1.0,
+            ((k * 71) % 89) as f64 / 44.0 - 1.0,
+        ];
         let e = 1e-4;
         let g = [0, 1, 2].map(|i| {
             let (mut a, mut b) = (p, p);

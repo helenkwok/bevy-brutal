@@ -128,7 +128,8 @@ impl LodLayout for SlabLayout {
         if p[self.axis] < self.split { self.lod_below } else { self.lod_above }
     }
     fn finer_box(&self, lod: u8) -> Option<Aabb> {
-        let (fine_below, fine) = if self.lod_below < self.lod_above { (true, self.lod_below) } else { (false, self.lod_above) };
+        let (fine_below, fine) =
+            if self.lod_below < self.lod_above { (true, self.lod_below) } else { (false, self.lod_above) };
         if lod <= fine || lod > self.lod_below.max(self.lod_above) {
             return None;
         }
@@ -241,13 +242,24 @@ impl BrickMesh {
 
 #[derive(Debug, PartialEq)]
 pub enum VoxelError {
-    NonFinite { at: [i64; 3] },
-    LodJump { brick: BrickCoord, neighbour: u8 },
-    NotABox { brick: BrickCoord },
+    NonFinite {
+        at: [i64; 3],
+    },
+    LodJump {
+        brick: BrickCoord,
+        neighbour: u8,
+    },
+    NotABox {
+        brick: BrickCoord,
+    },
     /// The LOD-seam displacement of this brick would reach a face/edge/corner it shares with a
     /// coarser brick (finer region closer than one cell to it).
-    PhiReachesCoarser { brick: BrickCoord },
-    LodTooHigh { brick: BrickCoord },
+    PhiReachesCoarser {
+        brick: BrickCoord,
+    },
+    LodTooHigh {
+        brick: BrickCoord,
+    },
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -369,12 +381,23 @@ pub fn filter_level(layout: &dyn LodLayout, p: [i64; 3]) -> u8 {
 }
 
 /// Sample a brick (with apron) and the fine samples of its transition faces.
-pub fn sample_brick(field: &dyn DensityField, cfg: &VoxelConfig, coord: BrickCoord, transitions: u8) -> Result<BrickSamples, VoxelError> {
+pub fn sample_brick(
+    field: &dyn DensityField,
+    cfg: &VoxelConfig,
+    coord: BrickCoord,
+    transitions: u8,
+) -> Result<BrickSamples, VoxelError> {
     sample_brick_with(field, cfg, Filter::None, coord, transitions)
 }
 
 /// [`sample_brick`] band-limited by the continuous [`ShellLayout::smooth_filter_cell`].
-pub fn sample_brick_smooth(field: &dyn DensityField, cfg: &VoxelConfig, layout: &ShellLayout, coord: BrickCoord, transitions: u8) -> Result<BrickSamples, VoxelError> {
+pub fn sample_brick_smooth(
+    field: &dyn DensityField,
+    cfg: &VoxelConfig,
+    layout: &ShellLayout,
+    coord: BrickCoord,
+    transitions: u8,
+) -> Result<BrickSamples, VoxelError> {
     sample_brick_with(field, cfg, Filter::Smooth(layout), coord, transitions)
 }
 
@@ -512,7 +535,16 @@ impl Mesher<'_> {
 
     /// Emit (or reuse) the vertex on lattice edge (pa, pb). `ga/gb`: endpoint gradients.
     #[allow(clippy::too_many_arguments)]
-    fn vertex(&mut self, pa: [i64; 3], da: i32, ga: [f32; 3], pb: [i64; 3], db: i32, gb: [f32; 3], displace: bool) -> u32 {
+    fn vertex(
+        &mut self,
+        pa: [i64; 3],
+        da: i32,
+        ga: [f32; 3],
+        pb: [i64; 3],
+        db: i32,
+        gb: [f32; 3],
+        displace: bool,
+    ) -> u32 {
         let (a, b, da, db, ga, gb) = if pa < pb { (pa, pb, da, db, ga, gb) } else { (pb, pa, db, da, gb, ga) };
         if let Some(&v) = self.edge_vertex.get(&(a, b)) {
             return v;
@@ -568,7 +600,11 @@ impl Mesher<'_> {
                         *slot = self.vertex(p0, cd[c0], g0, p1, cd[c1], g1, true);
                     }
                     for t in 0..(counts & 0xF) as usize {
-                        self.out.indices.extend([cv[tri[3 * t] as usize], cv[tri[3 * t + 1] as usize], cv[tri[3 * t + 2] as usize]]);
+                        self.out.indices.extend([
+                            cv[tri[3 * t] as usize],
+                            cv[tri[3 * t + 1] as usize],
+                            cv[tri[3 * t + 2] as usize],
+                        ]);
                     }
                 }
             }
@@ -751,7 +787,12 @@ impl VoxelWorld {
 }
 
 /// All bricks at each LOD whose region the layout assigns to that LOD, inside `region`.
-pub fn bricks_in(grid: &BrickGrid, layout: &dyn LodLayout, region: ([i64; 3], [i64; 3]), max_lod: u8) -> Vec<BrickCoord> {
+pub fn bricks_in(
+    grid: &BrickGrid,
+    layout: &dyn LodLayout,
+    region: ([i64; 3], [i64; 3]),
+    max_lod: u8,
+) -> Vec<BrickCoord> {
     let mut todo = Vec::new();
     for lod in 0..=max_lod {
         let ext = grid.brick_size() as i64 * grid.step(lod);
@@ -808,7 +849,8 @@ fn build_world_with(
         .par_iter()
         .map(|&b| {
             let (mask, finer) = plan_brick(&cfg.grid, layout, b)?;
-            let smp = sample_brick_with(field, cfg, if filtered { Filter::Level(layout) } else { Filter::None }, b, mask)?;
+            let smp =
+                sample_brick_with(field, cfg, if filtered { Filter::Level(layout) } else { Filter::None }, b, mask)?;
             if !smp.has_sign_change() {
                 return Ok(None);
             }
@@ -996,7 +1038,9 @@ pub fn topology<'a>(meshes: impl IntoIterator<Item = &'a BrickMesh>) -> Topology
             pb[0] as i128 * pc[1] as i128 - pb[1] as i128 * pc[0] as i128,
         ];
         let vol6 = pa[0] as i128 * cr[0] + pa[1] as i128 * cr[1] + pa[2] as i128 * cr[2];
-        let open = [(a, b), (b, c), (c, a)].iter().any(|&(u, v)| directed.get(&(v, u)).copied().unwrap_or(0) != 1 || directed[&(u, v)] != 1);
+        let open = [(a, b), (b, c), (c, a)]
+            .iter()
+            .any(|&(u, v)| directed.get(&(v, u)).copied().unwrap_or(0) != 1 || directed[&(u, v)] != 1);
         let e = comp.entry(root).or_insert((0, false, false, false, false));
         e.0 += vol6;
         e.1 |= open;
@@ -1051,11 +1095,21 @@ pub struct IslandStats {
 /// region) and the main surface are kept. Vertices are compacted; order is deterministic.
 pub fn remove_islands(m: &mut BrickMesh, min_tris: usize) -> IslandStats {
     let mut weld: HashMap<[i64; 3], u32> = HashMap::new();
-    let wid: Vec<u32> = m.ipos.iter().map(|p| {
-        let n = weld.len() as u32;
-        *weld.entry(*p).or_insert(n)
-    }).collect();
-    let tris: Vec<[u32; 3]> = m.indices.as_chunks::<3>().0.iter().map(|t| [wid[t[0] as usize], wid[t[1] as usize], wid[t[2] as usize]]).collect();
+    let wid: Vec<u32> = m
+        .ipos
+        .iter()
+        .map(|p| {
+            let n = weld.len() as u32;
+            *weld.entry(*p).or_insert(n)
+        })
+        .collect();
+    let tris: Vec<[u32; 3]> = m
+        .indices
+        .as_chunks::<3>()
+        .0
+        .iter()
+        .map(|t| [wid[t[0] as usize], wid[t[1] as usize], wid[t[2] as usize]])
+        .collect();
     let mut parent: Vec<u32> = (0..tris.len() as u32).collect();
     fn find(p: &mut [u32], mut x: u32) -> u32 {
         while p[x as usize] != x {
@@ -1082,7 +1136,11 @@ pub fn remove_islands(m: &mut BrickMesh, min_tris: usize) -> IslandStats {
     let mut comp: HashMap<u32, (usize, i128, bool)> = HashMap::new();
     let roots: Vec<u32> = (0..tris.len() as u32).map(|t| find(&mut parent, t)).collect();
     for (ti, &[a, b, c]) in tris.iter().enumerate() {
-        let (pa, pb, pc) = (m.ipos[m.indices[3 * ti] as usize], m.ipos[m.indices[3 * ti + 1] as usize], m.ipos[m.indices[3 * ti + 2] as usize]);
+        let (pa, pb, pc) = (
+            m.ipos[m.indices[3 * ti] as usize],
+            m.ipos[m.indices[3 * ti + 1] as usize],
+            m.ipos[m.indices[3 * ti + 2] as usize],
+        );
         let cr = [
             pb[1] as i128 * pc[2] as i128 - pb[2] as i128 * pc[1] as i128,
             pb[2] as i128 * pc[0] as i128 - pb[0] as i128 * pc[2] as i128,

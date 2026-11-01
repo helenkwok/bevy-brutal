@@ -55,7 +55,11 @@ pub fn frame_basis(d: Vec3) -> (Vec3, Vec3) {
 
 fn oct_encode(n: Vec3) -> [u8; 2] {
     let n = n / (n.x.abs() + n.y.abs() + n.z.abs()).max(1e-12);
-    let p = if n.y >= 0.0 { Vec2::new(n.x, n.z) } else { Vec2::new((1.0 - n.z.abs()) * n.x.signum(), (1.0 - n.x.abs()) * n.z.signum()) };
+    let p = if n.y >= 0.0 {
+        Vec2::new(n.x, n.z)
+    } else {
+        Vec2::new((1.0 - n.z.abs()) * n.x.signum(), (1.0 - n.x.abs()) * n.z.signum())
+    };
     let q = |v: f32| ((v * 0.5 + 0.5) * 255.0).round().clamp(0.0, 255.0) as u8;
     [q(p.x), q(p.y)]
 }
@@ -64,7 +68,8 @@ fn oct_encode(n: Vec3) -> [u8; 2] {
 pub fn oct_decode(a: u8, b: u8) -> Vec3 {
     let p = Vec2::new(a as f32 / 255.0 * 2.0 - 1.0, b as f32 / 255.0 * 2.0 - 1.0);
     let y = 1.0 - p.x.abs() - p.y.abs();
-    let (x, z) = if y >= 0.0 { (p.x, p.y) } else { ((1.0 - p.y.abs()) * p.x.signum(), (1.0 - p.x.abs()) * p.y.signum()) };
+    let (x, z) =
+        if y >= 0.0 { (p.x, p.y) } else { ((1.0 - p.y.abs()) * p.x.signum(), (1.0 - p.x.abs()) * p.y.signum()) };
     Vec3::new(x, y, z).normalize()
 }
 
@@ -215,13 +220,21 @@ pub fn bake_variant(verts: &[QVertex], indices: &[u32]) -> ImpostorVariant {
                             continue;
                         }
                         let (va, vb, vc) = (&verts[a], &verts[b], &verts[cc]);
-                        let code = [va.attr[3], vb.attr[3], vc.attr[3]][if w0 >= w1 && w0 >= w2 { 0 } else if w1 >= w2 { 1 } else { 2 }];
+                        let code = [va.attr[3], vb.attr[3], vc.attr[3]][if w0 >= w1 && w0 >= w2 {
+                            0
+                        } else if w1 >= w2 {
+                            1
+                        } else {
+                            2
+                        }];
                         let lerp = |k: usize| va.attr[k] * w0 + vb.attr[k] * w1 + vc.attr[k] * w2;
                         let card = code > 5.5;
                         if card && !card_alpha(lerp(0), lerp(2)) {
                             continue;
                         }
-                        let mut nn = Vec3::from_array(va.nrm) * w0 + Vec3::from_array(vb.nrm) * w1 + Vec3::from_array(vc.nrm) * w2;
+                        let mut nn = Vec3::from_array(va.nrm) * w0
+                            + Vec3::from_array(vb.nrm) * w1
+                            + Vec3::from_array(vc.nrm) * w2;
                         if !card && nn.dot(d) < 0.0 {
                             nn = -nn; // two-sided: the side facing the viewer (cards keep volume normals)
                         }
@@ -238,7 +251,8 @@ pub fn bake_variant(verts: &[QVertex], indices: &[u32]) -> ImpostorVariant {
             (0..res * res)
                 .map(|k| {
                     let (x, y) = (k % res, k / res);
-                    let (mut hits, mut tmax, mut nsum, mut ao, mut hf, mut bark) = (0u32, -1.0f32, Vec3::ZERO, 0.0f32, 0.0f32, 0u32);
+                    let (mut hits, mut tmax, mut nsum, mut ao, mut hf, mut bark) =
+                        (0u32, -1.0f32, Vec3::ZERO, 0.0f32, 0.0f32, 0u32);
                     for j in 0..SS {
                         for i in 0..SS {
                             if let Some(s) = buf[((y * SS + j) * sres + x * SS + i) as usize] {
@@ -274,7 +288,8 @@ pub const HEADER_BYTES: usize = 32;
 
 /// GPU atlas buffer: header (2 `float4` per variant) followed by all texels.
 pub fn atlas_bytes(variants: &[ImpostorVariant]) -> Vec<u8> {
-    let mut out = Vec::with_capacity(variants.len() * HEADER_BYTES + variants.iter().map(|v| v.texels.len() * 8).sum::<usize>());
+    let mut out =
+        Vec::with_capacity(variants.len() * HEADER_BYTES + variants.iter().map(|v| v.texels.len() * 8).sum::<usize>());
     for v in variants {
         for f in [v.centre.x, v.centre.y, v.centre.z, v.radius, v.half.x, v.half.y, v.half.z, 0.0] {
             out.extend_from_slice(&f.to_le_bytes());
@@ -307,7 +322,10 @@ mod tests {
             for s in [-1.0f32, 1.0] {
                 let mut n = Vec3::ZERO;
                 n[axis] = s;
-                let (u, w) = (Vec3::from_array([0, 1, 2].map(|k| ((k == (axis + 1) % 3) as u8) as f32)), Vec3::from_array([0, 1, 2].map(|k| ((k == (axis + 2) % 3) as u8) as f32)));
+                let (u, w) = (
+                    Vec3::from_array([0, 1, 2].map(|k| ((k == (axis + 1) % 3) as u8) as f32)),
+                    Vec3::from_array([0, 1, 2].map(|k| ((k == (axis + 2) % 3) as u8) as f32)),
+                );
                 let base = v.len() as u32;
                 for (a, b) in [(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)] {
                     let p = n * 0.5 + u * (a * 0.5) + w * (b * 0.5) + Vec3::Y * 0.5;

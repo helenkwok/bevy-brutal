@@ -370,13 +370,14 @@ pub fn encode(grid: &BrickGrid, coord: BrickCoord, m: &BrickMesh, opts: MeshOpts
             let mut cand = [0u32; MAX_CAND];
             // gate: (a, b, o) in new ids, plus the neighbour (tri, rotation) it leads to
             let mut stack: Vec<([u32; 3], u32, u8)> = Vec::new();
-            let assign = |old: u32, p: [u32; 3], order: &mut Vec<u32>, par: &mut Vec<[u32; 3]>, new_id: &mut Vec<u32>| -> u32 {
-                let id = order.len() as u32;
-                new_id[old as usize] = id;
-                order.push(old);
-                par.push(p);
-                id
-            };
+            let assign =
+                |old: u32, p: [u32; 3], order: &mut Vec<u32>, par: &mut Vec<[u32; 3]>, new_id: &mut Vec<u32>| -> u32 {
+                    let id = order.len() as u32;
+                    new_id[old as usize] = id;
+                    order.push(old);
+                    par.push(p);
+                    id
+                };
             let neighbour = |claimed: &[bool], t: u32, a: u32, b: u32| -> Option<(u32, u8)> {
                 // across directed edge (a, b) (old ids) lies the triangle holding (b, a)
                 edge.get(&(b, a)).copied().filter(|&(n, _)| n != t && !claimed[n as usize])
@@ -472,7 +473,15 @@ pub fn encode(grid: &BrickGrid, coord: BrickCoord, m: &BrickMesh, opts: MeshOpts
     let dirs: Vec<u8> = if has_dirs { order.iter().map(|&o| m.dirs[o as usize]).collect() } else { Vec::new() };
     assert!(dirs.iter().all(|&d| d < 64), "dirs use 6 bits at most");
     let log2_cell = cell.trailing_zeros() as u8;
-    let fshift = local.iter().flatten().map(|&c| (c as i64).rem_euclid(cell)).filter(|&f| f != 0).map(|f| f.trailing_zeros() as u8).min().unwrap_or(log2_cell).min(log2_cell);
+    let fshift = local
+        .iter()
+        .flatten()
+        .map(|&c| (c as i64).rem_euclid(cell))
+        .filter(|&f| f != 0)
+        .map(|f| f.trailing_zeros() as u8)
+        .min()
+        .unwrap_or(log2_cell)
+        .min(log2_cell);
     for v in 0..nv {
         let axis = if has_dirs {
             // the sign bit (bit 2) is coded after the normals, predicted from them
@@ -485,7 +494,8 @@ pub fn encode(grid: &BrickGrid, coord: BrickCoord, m: &BrickMesh, opts: MeshOpts
     }
     let c = (1i32 << (opts.normal_bits - 1)) - 1;
     let geo = geom_normals(&local, &tris);
-    let normals: Vec<[f64; 3]> = order.iter().map(|&o| m.vertices.get(o as usize).map_or([0.0; 3], |v| v.normal.map(f64::from))).collect();
+    let normals: Vec<[f64; 3]> =
+        order.iter().map(|&o| m.vertices.get(o as usize).map_or([0.0; 3], |v| v.normal.map(f64::from))).collect();
     let dot: f64 = (0..nv).map(|v| (0..3).map(|k| geo[v][k] as f64 * normals[v][k]).sum::<f64>().signum()).sum();
     let flip = dot < 0.0;
     let mut dec_n = Vec::with_capacity(nv);
@@ -690,7 +700,15 @@ impl Decoded {
 
     /// Write render vertices (exactly [`VoxelConfig::sub_to_render`], so bit-identical to the
     /// mesher's f32 output) and rebased indices straight into GPU-mapped slices.
-    pub fn write_gpu(&self, cfg: &VoxelConfig, coord: BrickCoord, qbits: u8, verts: &mut [VoxelVertex], idx: &mut [u32], base: u32) {
+    pub fn write_gpu(
+        &self,
+        cfg: &VoxelConfig,
+        coord: BrickCoord,
+        qbits: u8,
+        verts: &mut [VoxelVertex],
+        idx: &mut [u32],
+        base: u32,
+    ) {
         let org = origin_sub(&cfg.grid, coord);
         for ((out, l), n) in verts.iter_mut().zip(&self.local).zip(&self.normals) {
             let g = [0, 1, 2].map(|k| org[k] + ((l[k] as i64) << qbits));

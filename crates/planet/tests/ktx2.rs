@@ -11,7 +11,17 @@ fn synth(fmt: TexFormat, size: u32) -> Texture {
     Texture { name: "t".into(), format: fmt, size, mips, data }
 }
 
-const FORMATS: [TexFormat; 9] = [TexFormat::Bc7Srgb, TexFormat::Bc7, TexFormat::Bc5, TexFormat::Bc4, TexFormat::Rgba8Srgb, TexFormat::Rgba8, TexFormat::Rg8, TexFormat::R8, TexFormat::R16];
+const FORMATS: [TexFormat; 9] = [
+    TexFormat::Bc7Srgb,
+    TexFormat::Bc7,
+    TexFormat::Bc5,
+    TexFormat::Bc4,
+    TexFormat::Rgba8Srgb,
+    TexFormat::Rgba8,
+    TexFormat::Rg8,
+    TexFormat::R8,
+    TexFormat::R16,
+];
 
 #[test]
 fn round_trip_all_formats() {
@@ -31,10 +41,19 @@ fn round_trip_all_formats() {
             std::fs::write(&p, &bytes).unwrap();
             if let Ok(tool) = std::env::var("KTX_TOOL") {
                 // warnings are errors except 7010 (custom key: allowed by the spec, merely flagged)
-                let o = std::process::Command::new(&tool).args(["validate", "-f", "mini-json"]).arg(&p).output().expect("run ktx validate");
+                let o = std::process::Command::new(&tool)
+                    .args(["validate", "-f", "mini-json"])
+                    .arg(&p)
+                    .output()
+                    .expect("run ktx validate");
                 let out = String::from_utf8_lossy(&o.stdout);
-                let ids: Vec<&str> = out.match_indices("\"id\":").map(|(i, _)| &out[i + 5..(i + 10).min(out.len())]).collect();
-                assert!(o.status.success() && ids.iter().all(|id| id.starts_with("7010")), "ktx validate {}: {out}", p.display());
+                let ids: Vec<&str> =
+                    out.match_indices("\"id\":").map(|(i, _)| &out[i + 5..(i + 10).min(out.len())]).collect();
+                assert!(
+                    o.status.success() && ids.iter().all(|id| id.starts_with("7010")),
+                    "ktx validate {}: {out}",
+                    p.display()
+                );
             }
         }
     }
@@ -94,13 +113,23 @@ fn round_trip_2d_array() {
             assert_eq!((k.format, k.size, k.mips, k.images, k.array), (fmt, 64, t.mips, 2, true));
             assert_eq!(k.gpu_bytes(), t.data.len());
             assert_eq!(k.to_texture("t").unwrap().data, t.data, "{fmt:?} {sc:?}");
-            let p = dir.join(format!("array_{fmt:?}_{}.ktx2", if sc == Supercompression::None { "none" } else { "zstd" }));
+            let p =
+                dir.join(format!("array_{fmt:?}_{}.ktx2", if sc == Supercompression::None { "none" } else { "zstd" }));
             std::fs::write(&p, &bytes).unwrap();
             if let Ok(tool) = std::env::var("KTX_TOOL") {
-                let o = std::process::Command::new(&tool).args(["validate", "-f", "mini-json"]).arg(&p).output().expect("run ktx validate");
+                let o = std::process::Command::new(&tool)
+                    .args(["validate", "-f", "mini-json"])
+                    .arg(&p)
+                    .output()
+                    .expect("run ktx validate");
                 let out = String::from_utf8_lossy(&o.stdout);
-                let ids: Vec<&str> = out.match_indices("\"id\":").map(|(i, _)| &out[i + 5..(i + 10).min(out.len())]).collect();
-                assert!(o.status.success() && ids.iter().all(|id| id.starts_with("7010")), "ktx validate {}: {out}", p.display());
+                let ids: Vec<&str> =
+                    out.match_indices("\"id\":").map(|(i, _)| &out[i + 5..(i + 10).min(out.len())]).collect();
+                assert!(
+                    o.status.success() && ids.iter().all(|id| id.starts_with("7010")),
+                    "ktx validate {}: {out}",
+                    p.display()
+                );
             }
             // a cube parser view of the same bytes would need 6 images: wrong data size is rejected
             assert!(write_array(&t, 3, sc, &[]).is_err());

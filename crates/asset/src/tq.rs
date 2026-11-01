@@ -250,7 +250,11 @@ impl<'a> TqView<'a> {
             return Err(TqError::BadBits(bits));
         }
         let (n, samples, blocks) = (h[3], h[4], h[5]);
-        if !(1..=128).contains(&n) || samples as u64 != (n as u64 + 3).pow(3) || blocks as usize != (samples as usize).div_ceil(D) || h[7] != 0 {
+        if !(1..=128).contains(&n)
+            || samples as u64 != (n as u64 + 3).pow(3)
+            || blocks as usize != (samples as usize).div_ceil(D)
+            || h[7] != 0
+        {
             return Err(TqError::BadShape);
         }
         if words.len() * 4 != blob_bytes(samples as usize, bits) {
@@ -416,7 +420,11 @@ pub fn decode_hybrid(view: &TqView<'_>, rot: &Rotation, exact: &[i32]) -> Vec<i3
 pub fn face_residual(view: &TqView<'_>, rot: &Rotation, exact: &[i32]) -> Vec<i32> {
     let dec = view.decode(rot);
     let n = view.n as usize;
-    dec.iter().zip(exact).enumerate().map(|(k, (d, e))| if on_face_plane(k, n) { e.wrapping_sub(*d) } else { 0 }).collect()
+    dec.iter()
+        .zip(exact)
+        .enumerate()
+        .map(|(k, (d, e))| if on_face_plane(k, n) { e.wrapping_sub(*d) } else { 0 })
+        .collect()
 }
 
 /// Moved to [`crate::samples::mesh_band`] (the stored, versioned form is `SampleBlob.band`).
@@ -429,7 +437,10 @@ mod tests {
     fn erf(x: f64) -> f64 {
         // Abramowitz & Stegun 7.1.26 (|err| < 1.5e-7)
         let t = 1.0 / (1.0 + 0.327_591_1 * x.abs());
-        let y = 1.0 - (((((1.061_405_429 * t - 1.453_152_027) * t) + 1.421_413_741) * t - 0.284_496_736) * t + 0.254_829_592) * t * (-x * x).exp();
+        let y = 1.0
+            - (((((1.061_405_429 * t - 1.453_152_027) * t) + 1.421_413_741) * t - 0.284_496_736) * t + 0.254_829_592)
+                * t
+                * (-x * x).exp();
         if x >= 0.0 { y } else { -y }
     }
 
@@ -559,8 +570,14 @@ mod tests {
         use voxel::*;
         let cfg = VoxelConfig::new(coords::BrickGrid::new(16, 0.25).unwrap());
         let cases: Vec<(Box<dyn DensityField>, Box<dyn LodLayout>)> = vec![
-            (Box::new(BlobScene { radius: 9.0, seed: 3 }), Box::new(ShellLayout::camera_centred(&cfg.grid, [5, -3, 7], &[1, 1]))),
-            (Box::new(Adversarial { seed: 4, voxel_m: 0.25, radius_m: 7.0 }), Box::new(SlabLayout { axis: 1, split: 0, lod_below: 1, lod_above: 0 })),
+            (
+                Box::new(BlobScene { radius: 9.0, seed: 3 }),
+                Box::new(ShellLayout::camera_centred(&cfg.grid, [5, -3, 7], &[1, 1])),
+            ),
+            (
+                Box::new(Adversarial { seed: 4, voxel_m: 0.25, radius_m: 7.0 }),
+                Box::new(SlabLayout { axis: 1, split: 0, lod_below: 1, lod_above: 0 }),
+            ),
         ];
         let (mut bricks, mut altered) = (0, 0);
         for (field, lay) in &cases {

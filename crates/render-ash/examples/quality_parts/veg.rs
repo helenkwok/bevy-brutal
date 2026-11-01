@@ -5,11 +5,11 @@
 //! moisture density. Instances are camera-relative f32 matrices built from f64 positions and are
 //! culled + compacted on the GPU by the instanced-pass chain (cull/scan/scatter/compact).
 use glam::{DVec3, Mat4, Quat, Vec3};
-use rayon::prelude::*;
-use std::collections::HashMap;
 use lowlevel_abi::InstanceGpu;
+use rayon::prelude::*;
 use render_ash::mesh::MeshInfoGpu;
 use render_ash::quality::QVertex;
+use std::collections::HashMap;
 use voxel::fields::Alpine;
 use voxel::noise::{perlin2, rand2};
 
@@ -191,13 +191,38 @@ const CARD: f32 = 6.0;
 /// are crown-volume normals (outward from the trunk + up + a little of the card's own),
 /// `u_off` = 2 selects the broadleaf pattern.
 #[allow(clippy::too_many_arguments)]
-fn shoot(m: &mut Mb, start: Vec3, d: Vec3, len: f32, rise: f32, sag: f32, tipup: f32, width: f32, out: Vec3, u_off: f32, cards: &[(f32, f32)]) {
+fn shoot(
+    m: &mut Mb,
+    start: Vec3,
+    d: Vec3,
+    len: f32,
+    rise: f32,
+    sag: f32,
+    tipup: f32,
+    width: f32,
+    out: Vec3,
+    u_off: f32,
+    cards: &[(f32, f32)],
+) {
     shoot_n(m, start, d, len, rise, sag, tipup, width, out, u_off, cards, 3);
 }
 
 /// [`shoot`] with `segs` segments along each card (2 triangles each).
 #[allow(clippy::too_many_arguments)]
-fn shoot_n(m: &mut Mb, start: Vec3, d: Vec3, len: f32, rise: f32, sag: f32, tipup: f32, width: f32, out: Vec3, u_off: f32, cards: &[(f32, f32)], segs: u32) {
+fn shoot_n(
+    m: &mut Mb,
+    start: Vec3,
+    d: Vec3,
+    len: f32,
+    rise: f32,
+    sag: f32,
+    tipup: f32,
+    width: f32,
+    out: Vec3,
+    u_off: f32,
+    cards: &[(f32, f32)],
+    segs: u32,
+) {
     let side = d.cross(Vec3::Y).normalize_or(Vec3::X);
     let pt = |s: f32| start + d * len * s + Vec3::Y * (rise * s - sag * s * s + tipup * s.powi(4));
     let dpt = |s: f32| (d * len + Vec3::Y * (rise - 2.0 * sag * s + 4.0 * tipup * s.powi(3))).normalize_or(d);
@@ -216,7 +241,11 @@ fn shoot_n(m: &mut Mb, start: Vec3, d: Vec3, len: f32, rise: f32, sag: f32, tipu
             let vn = (out * 0.65 + Vec3::Y * 0.55 + cn * 0.35).normalize();
             for (u, sg) in [(0.0f32, -0.5f32), (1.0, 0.5)] {
                 let q = p + across * ww * sg;
-                m.v.push(QVertex { pos: q.to_array(), nrm: vn.to_array(), attr: [u + u_off, q.y.clamp(0.0, 1.0), s, CARD] });
+                m.v.push(QVertex {
+                    pos: q.to_array(),
+                    nrm: vn.to_array(),
+                    attr: [u + u_off, q.y.clamp(0.0, 1.0), s, CARD],
+                });
             }
         }
         for k in 0..segs {
@@ -252,7 +281,11 @@ fn card_conifer(c: Crown, sp: u32, crown_base: f32, detail: u32) -> Mb {
     let sides = [7usize, 5, 4][detail as usize];
     let top = crown_base + 0.3;
     let far_rings = [(0.0, 0.014), (crown_base, 0.009), (top, 0.0012)];
-    let rings: &[(f32, f32)] = if detail > 0 { &far_rings } else { &[(0.0f32, 0.014f32), (0.04, 0.010), (0.3, 0.0075), (0.6, 0.0048), (0.78, 0.0022), (0.86, 0.0006)] };
+    let rings: &[(f32, f32)] = if detail > 0 {
+        &far_rings
+    } else {
+        &[(0.0f32, 0.014f32), (0.04, 0.010), (0.3, 0.0075), (0.6, 0.0048), (0.78, 0.0022), (0.86, 0.0006)]
+    };
     let mut prev: Option<Vec<u32>> = None;
     for &(y, rad) in rings {
         let ring: Vec<u32> = (0..sides)
@@ -260,7 +293,8 @@ fn card_conifer(c: Crown, sp: u32, crown_base: f32, detail: u32) -> Mb {
                 let t = k as f32 / sides as f32 * std::f32::consts::TAU;
                 let d = Vec3::new(t.cos(), 0.0, t.sin());
                 // inside the crown the stem is in the shade of the whorls
-                let ao = (0.35 + 0.5 * y) * (1.0 - 0.6 * smoothstep(crown_base as f64, crown_base as f64 + 0.25, y as f64) as f32);
+                let ao = (0.35 + 0.5 * y)
+                    * (1.0 - 0.6 * smoothstep(crown_base as f64, crown_base as f64 + 0.25, y as f64) as f32);
                 m.vert(d * rad + Vec3::Y * y, d, ao, y, BARK)
             })
             .collect();
@@ -312,10 +346,35 @@ fn card_conifer(c: Crown, sp: u32, crown_base: f32, detail: u32) -> Mb {
             // main shoot: a flat spray and two cards tilted +-0.9 rad (volume from any side)
             if detail > 0 {
                 let segs = if detail == 1 { 3 } else { lod2_segs() };
-                shoot_n(&mut m, start, d, l, 0.12 * l, sag, tipup, l * 0.62 * wk, dh, uo, if detail == 1 { &[(1.0, 0.0), (0.8, 0.9), (0.8, -0.9)] } else { &[(1.0, 0.0), (0.85, 1.1)] }, segs);
+                shoot_n(
+                    &mut m,
+                    start,
+                    d,
+                    l,
+                    0.12 * l,
+                    sag,
+                    tipup,
+                    l * 0.62 * wk,
+                    dh,
+                    uo,
+                    if detail == 1 { &[(1.0, 0.0), (0.8, 0.9), (0.8, -0.9)] } else { &[(1.0, 0.0), (0.85, 1.1)] },
+                    segs,
+                );
                 continue;
             }
-            shoot(&mut m, start, d, l, 0.12 * l, sag, tipup, l * 0.62, dh, uo, &[(1.0, 0.0), (0.75, 0.9), (0.75, -0.9)]);
+            shoot(
+                &mut m,
+                start,
+                d,
+                l,
+                0.12 * l,
+                sag,
+                tipup,
+                l * 0.62,
+                dh,
+                uo,
+                &[(1.0, 0.0), (0.75, 0.9), (0.75, -0.9)],
+            );
             // side shoots (second-order branching). Spruce: three per branch that hang down from
             // it (a curtain of pendant shoots, the comb habit) instead of a flat fern-like fan
             let sides: &[(i64, f32)] = if spruce { &[(0, 0.28), (1, 0.5), (2, 0.72)] } else { &[(0, 0.33), (1, 0.62)] };
@@ -324,7 +383,19 @@ fn card_conifer(c: Crown, sp: u32, crown_base: f32, detail: u32) -> Mb {
                 let sp0 = start + d * l * sf + Vec3::Y * (0.12 * l * sf - sag * sf * sf);
                 if spruce {
                     let sd = (d + d.cross(Vec3::Y) * side * 0.55 - Vec3::Y * 1.1).normalize();
-                    shoot(&mut m, sp0, sd, l * 0.38 * (1.0 - 0.3 * sf), 0.0, 0.0, 0.0, l * 0.30, dh, uo, &[(1.0, 0.0), (0.7, 1.2)]);
+                    shoot(
+                        &mut m,
+                        sp0,
+                        sd,
+                        l * 0.38 * (1.0 - 0.3 * sf),
+                        0.0,
+                        0.0,
+                        0.0,
+                        l * 0.30,
+                        dh,
+                        uo,
+                        &[(1.0, 0.0), (0.7, 1.2)],
+                    );
                 } else {
                     let sd = (d + d.cross(Vec3::Y) * side).normalize();
                     shoot(&mut m, sp0, sd, l * 0.45, 0.02 * l, sag * 0.3, 0.0, l * 0.32, d, uo, &[(1.0, 0.0)]);
@@ -364,10 +435,17 @@ fn card_shrub(seed: u64, needle: bool, far: bool) -> Mb {
         let sag = if needle { 0.08 } else { 0.18 } * l;
         let start = out * 0.04;
         let pt = |t: f32| start + d * l * t - Vec3::Y * sag * t * t;
-        let forks: &[(f32, f32)] = if far { &[(0.3, 0.6), (0.6, -0.4)] } else { &[(0.2, 0.9), (0.38, -0.8), (0.55, 0.5), (0.72, -0.4), (0.88, 0.0)] };
+        let forks: &[(f32, f32)] = if far {
+            &[(0.3, 0.6), (0.6, -0.4)]
+        } else {
+            &[(0.2, 0.9), (0.38, -0.8), (0.55, 0.5), (0.72, -0.4), (0.88, 0.0)]
+        };
         for (fi, &(t, turn)) in forks.iter().enumerate() {
-            let tw = (out * turn.cos() + out.cross(Vec3::Y) * turn.sin() * 0.8 + Vec3::Y * (0.8 + 0.6 * r(10 + fi as i64))).normalize();
-            let tl = if far { 0.5 * l } else { (0.28 + 0.12 * r(20 + fi as i64)) * l * if fi == 4 { 1.3 } else { 1.0 } };
+            let tw =
+                (out * turn.cos() + out.cross(Vec3::Y) * turn.sin() * 0.8 + Vec3::Y * (0.8 + 0.6 * r(10 + fi as i64)))
+                    .normalize();
+            let tl =
+                if far { 0.5 * l } else { (0.28 + 0.12 * r(20 + fi as i64)) * l * if fi == 4 { 1.3 } else { 1.0 } };
             let width = if far { 0.24 } else { 0.13 + 0.04 * r(30 + fi as i64) } * if needle { 0.85 } else { 1.0 };
             shoot(&mut m, pt(t), tw, tl, 0.05 * tl, sag * 0.4, 0.0, width, out, u_off, &[(1.0, 0.0), (0.8, 1.2)]);
         }
@@ -377,7 +455,9 @@ fn card_shrub(seed: u64, needle: bool, far: bool) -> Mb {
 
 /// Crowns of a species (spruce, fir, larch, snag): needle-card branches, cone crown, low crown.
 fn tree_lods(sp: u32) -> [Mb; 3] {
-    let lods = |c: Crown, base: f32| [card_conifer(c, sp, base, 0), card_conifer(c, sp, base, 1), card_conifer(c, sp, base, 2)];
+    let lods = |c: Crown, base: f32| {
+        [card_conifer(c, sp, base, 0), card_conifer(c, sp, base, 1), card_conifer(c, sp, base, 2)]
+    };
     match sp {
         SP_SPRUCE => lods(SPRUCE, 0.14),
         SP_FIR => {
@@ -461,7 +541,10 @@ impl VegSet {
             self.add_mesh(b);
             self.add_mesh(c);
         }
-        let rocks: Vec<Mb> = (0..BOULDER_LODS * BOULDER_VARIANTS).into_par_iter().map(|k| boulder(21 + (k % BOULDER_VARIANTS) as u64, BOULDER_CELLS[(k / BOULDER_VARIANTS) as usize])).collect();
+        let rocks: Vec<Mb> = (0..BOULDER_LODS * BOULDER_VARIANTS)
+            .into_par_iter()
+            .map(|k| boulder(21 + (k % BOULDER_VARIANTS) as u64, BOULDER_CELLS[(k / BOULDER_VARIANTS) as usize]))
+            .collect();
         for r in rocks {
             self.add_mesh(r);
         }
@@ -556,7 +639,14 @@ impl VegSet {
         }
         self.instances.push(InstanceGpu { model: model.to_cols_array_2d(), mesh_id: mesh, material_id, _pad: [0; 2] });
         debug_assert!((scale.x - scale.z).abs() <= 1e-6 * scale.x.abs().max(1.0));
-        self.records.push(asset::Instance { pos: [world.x, world.y, world.z], yaw, height: scale.y, width: scale.x, mesh: mesh as u8, material: material_id as u16 });
+        self.records.push(asset::Instance {
+            pos: [world.x, world.y, world.z],
+            yaw,
+            height: scale.y,
+            width: scale.x,
+            mesh: mesh as u8,
+            material: material_id as u16,
+        });
         self.counts[match mesh {
             m if m < MESH_BOULDER => 0,
             m if m < MESH_GRASS => 1,
@@ -679,7 +769,8 @@ pub fn build(field: &Alpine, surf: &Surface, cam: DVec3, yaw: f64, half_fov: f64
         let cell = (0.004 * d).max(0.5);
         let c = field.column(x, z, cell);
         let h = c[0];
-        let tl0 = 1170.0 + 75.0 * perlin2(x / 1100.0, z / 1100.0, sd + 1) + 35.0 * perlin2(x / 260.0, z / 260.0, sd + 4);
+        let tl0 =
+            1170.0 + 75.0 * perlin2(x / 1100.0, z / 1100.0, sd + 1) + 35.0 * perlin2(x / 260.0, z / 260.0, sd + 4);
         if h > tl0 + 170.0 || h > 1330.0 {
             return None;
         }
@@ -701,8 +792,14 @@ pub fn build(field: &Alpine, surf: &Surface, cam: DVec3, yaw: f64, half_fov: f64
         let u = (h - tl) / 110.0;
         let alt = smoothstep(0.7, -0.5, u);
         // stands: domain-warped (no round blobs), edges frayed by finer octaves
-        let (wx, wz) = (x + 110.0 * perlin2(x / 300.0, z / 300.0, sd + 80), z + 110.0 * perlin2(x / 300.0 + 4.1, z / 300.0 - 2.3, sd + 81));
-        let n_st = perlin2(wx / 650.0, wz / 650.0, sd + 2) + 0.5 * perlin2(wx / 170.0, wz / 170.0, sd + 3) + 0.28 * perlin2(x / 60.0, z / 60.0, sd + 82) + 0.14 * perlin2(x / 22.0, z / 22.0, sd + 83);
+        let (wx, wz) = (
+            x + 110.0 * perlin2(x / 300.0, z / 300.0, sd + 80),
+            z + 110.0 * perlin2(x / 300.0 + 4.1, z / 300.0 - 2.3, sd + 81),
+        );
+        let n_st = perlin2(wx / 650.0, wz / 650.0, sd + 2)
+            + 0.5 * perlin2(wx / 170.0, wz / 170.0, sd + 3)
+            + 0.28 * perlin2(x / 60.0, z / 60.0, sd + 82)
+            + 0.14 * perlin2(x / 22.0, z / 22.0, sd + 83);
         let clus = smoothstep(-0.18, 0.3, n_st);
         let clump = perlin2(x / 35.0, z / 35.0, sd + 5) + 0.6 * gully;
         let kz = smoothstep(-0.5, 0.5, u);
@@ -711,9 +808,13 @@ pub fn build(field: &Alpine, surf: &Surface, cam: DVec3, yaw: f64, half_fov: f64
         // benches: locally gentle ground inside steep terrain hosts clumps; valley floor meadows
         let bench = smoothstep(0.55, 0.95, g_reg) * smoothstep(0.35, 0.18, g);
         let floor = 0.25 + 0.75 * smoothstep(0.04, 0.16, g_reg.max(g));
-        let mut dens = alt * sl * (stand * floor + 0.5 * bench * smoothstep(0.0, 0.4, clump)).min(1.0) * (0.85 + 0.3 * gully - 0.25 * spur);
+        let mut dens = alt
+            * sl
+            * (stand * floor + 0.5 * bench * smoothstep(0.0, 0.4, clump)).min(1.0)
+            * (0.85 + 0.3 * gully - 0.25 * spur);
         // clearings and tree-fall gaps inside the forest
-        let clear = smoothstep(0.42, 0.62, perlin2(x / 120.0 + 7.7, z / 120.0, sd + 84)) * 0.95 + smoothstep(0.5, 0.7, perlin2(x / 30.0, z / 30.0 + 3.3, sd + 85)) * 0.7;
+        let clear = smoothstep(0.42, 0.62, perlin2(x / 120.0 + 7.7, z / 120.0, sd + 84)) * 0.95
+            + smoothstep(0.5, 0.7, perlin2(x / 30.0, z / 30.0 + 3.3, sd + 85)) * 0.7;
         dens *= 1.0 - clear.min(1.0);
         // avalanche tracks: couloirs (40 m concavity) on steep regional slopes, only some of them
         let l3 = cell.max(40.0);
@@ -729,7 +830,10 @@ pub fn build(field: &Alpine, surf: &Surface, cam: DVec3, yaw: f64, half_fov: f64
     // species: larch toward the treeline, on sunny edges and avalanche margins (golden in
     // October); fir in the lower valley; snags (dead, grey) scattered, more at the treeline
     let species = |x: f64, z: f64, st: &Stand, r: f64| -> u32 {
-        let larch_p = 0.02 + 0.2 * smoothstep(1050.0, 1230.0, st.h) + 0.35 * smoothstep(0.3, 0.6, perlin2(x / 220.0, z / 220.0, sd + 87)) + 0.15 * st.aval;
+        let larch_p = 0.02
+            + 0.2 * smoothstep(1050.0, 1230.0, st.h)
+            + 0.35 * smoothstep(0.3, 0.6, perlin2(x / 220.0, z / 220.0, sd + 87))
+            + 0.15 * st.aval;
         let fir_p = 0.35 * smoothstep(1050.0, 900.0, st.h);
         let snag_p = 0.018 + 0.05 * st.kz + 0.03 * smoothstep(0.3, 0.7, perlin2(x / 90.0, z / 90.0, sd + 88));
         if r < snag_p {
@@ -787,14 +891,26 @@ pub fn build(field: &Alpine, surf: &Surface, cam: DVec3, yaw: f64, half_fov: f64
                         _ => 1.0,
                     };
                     // slender spruce .. broad fir; far trees stand for small groups (a bit wider)
-                    let wide = if salt == 1 { 1.2 } else { 1.0 } * (0.66 + 0.5 * rand2(i, j, sd + 40)) * shape * (1.0 + 0.22 * (1.0 - interior)) * if kind == 2 { 1.15 } else { 1.0 };
+                    let wide = if salt == 1 { 1.2 } else { 1.0 }
+                        * (0.66 + 0.5 * rand2(i, j, sd + 40))
+                        * shape
+                        * (1.0 + 0.22 * (1.0 - interior))
+                        * if kind == 2 { 1.15 } else { 1.0 };
                     // LOD0 of the species; the GPU picks LOD1 / the impostor per view by distance
                     let mesh = TREE_LODS * sp_id;
                     let yaw_i = (rand2(i, j, sd + 50) * std::f64::consts::TAU) as f32;
                     // trunk base sunk by its radius x slope (downhill side touches the ground)
                     let sink = 0.15 + st.g * 0.022 * hs * wide;
                     let crowd = (st.dens * 3.0).round() as u32;
-                    row.push((mesh, DVec3::new(x, y - sink, z), yaw_i, Vec3::new((hs * wide) as f32, hs as f32, (hs * wide) as f32), r, sp_id | crowd << 3, kind));
+                    row.push((
+                        mesh,
+                        DVec3::new(x, y - sink, z),
+                        yaw_i,
+                        Vec3::new((hs * wide) as f32, hs as f32, (hs * wide) as f32),
+                        r,
+                        sp_id | crowd << 3,
+                        kind,
+                    ));
                 }
                 row
             })
@@ -827,7 +943,8 @@ pub fn build(field: &Alpine, surf: &Surface, cam: DVec3, yaw: f64, half_fov: f64
                     }
                     let Some(st) = tree(x, z, d) else { continue };
                     let edge = smoothstep(0.03, 0.22, st.raw) * smoothstep(0.7, 0.3, st.dens);
-                    let dens = (0.22 * edge + 0.4 * st.aval * st.sl + 0.3 * st.kz * smoothstep(0.0, 0.3, st.raw)) * smoothstep(0.2, 0.5, st.sl);
+                    let dens = (0.22 * edge + 0.4 * st.aval * st.sl + 0.3 * st.kz * smoothstep(0.0, 0.3, st.raw))
+                        * smoothstep(0.2, 0.5, st.sl);
                     if rnd > dens {
                         continue;
                     }
@@ -836,7 +953,13 @@ pub fn build(field: &Alpine, surf: &Surface, cam: DVec3, yaw: f64, half_fov: f64
                     let mugo = st.kz > 0.4 || rand2(i, j, sd + 94) < 0.3;
                     let (w, h) = if mugo { (1.6 + 2.4 * r, 0.8 + 1.0 * r) } else { (1.8 + 2.6 * r, 1.3 + 1.8 * r) };
                     let yaw_i = (rand2(i, j, sd + 95) * std::f64::consts::TAU) as f32;
-                    row.push((DVec3::new(x, y - 0.1, z), yaw_i, Vec3::new(w as f32, h as f32, (w * (0.8 + 0.3 * rand2(i, j, sd + 96))) as f32), r, if mugo { SP_MUGO } else { SP_ALDER }));
+                    row.push((
+                        DVec3::new(x, y - 0.1, z),
+                        yaw_i,
+                        Vec3::new(w as f32, h as f32, (w * (0.8 + 0.3 * rand2(i, j, sd + 96))) as f32),
+                        r,
+                        if mugo { SP_MUGO } else { SP_ALDER },
+                    ));
                 }
                 row
             })
@@ -883,9 +1006,13 @@ pub fn build(field: &Alpine, surf: &Surface, cam: DVec3, yaw: f64, half_fov: f64
                         up = up.max((cu[1] * cu[1] + cu[2] * cu[2]).sqrt());
                     }
                     let tor = field.tor_mask(x, z);
-                    let talus = (smoothstep(0.85, 1.5, up) * smoothstep(0.12, 0.35, g) + 0.8 * smoothstep(0.05, 0.25, tor) * smoothstep(0.6, 0.3, tor)).min(1.0);
-                    let erratic = smoothstep(0.35, 0.15, g) * smoothstep(0.55, 0.75, perlin2(x / 140.0, z / 140.0, sd + 62) * 0.5 + 0.5);
-                    let (dens_t, dens_e, dens_s) = (0.32 * talus, 0.006 * erratic, 0.004 + 0.012 * smoothstep(0.2, 0.6, g));
+                    let talus = (smoothstep(0.85, 1.5, up) * smoothstep(0.12, 0.35, g)
+                        + 0.8 * smoothstep(0.05, 0.25, tor) * smoothstep(0.6, 0.3, tor))
+                    .min(1.0);
+                    let erratic = smoothstep(0.35, 0.15, g)
+                        * smoothstep(0.55, 0.75, perlin2(x / 140.0, z / 140.0, sd + 62) * 0.5 + 0.5);
+                    let (dens_t, dens_e, dens_s) =
+                        (0.32 * talus, 0.006 * erratic, 0.004 + 0.012 * smoothstep(0.2, 0.6, g));
                     let kind = if pick < dens_t {
                         0
                     } else if pick < dens_t + dens_e {
@@ -906,7 +1033,8 @@ pub fn build(field: &Alpine, surf: &Surface, cam: DVec3, yaw: f64, half_fov: f64
                     let yaw_i = (rand2(i, j, sd + 65) * std::f64::consts::TAU) as f32;
                     let var = (rand2(i, j, sd + 66) * BOULDER_VARIANTS as f64) as u32 % BOULDER_VARIANTS;
                     // half-buried: scattered stones sit deeper (frost-heaved, grassed around)
-                    let sink = (g * 0.55 + 0.06 * rand2(i, j, sd + 67) + if kind == 2 { 0.06 } else { 0.0 }) * sz as f64;
+                    let sink =
+                        (g * 0.55 + 0.06 * rand2(i, j, sd + 67) + if kind == 2 { 0.06 } else { 0.0 }) * sz as f64;
                     // moss affinity (crowding bits): forest floor / moist hollows
                     let moist = ((1.0 - smoothstep(900.0, 1250.0, c[0])) * 3.0).round() as u32;
                     row.push((var, DVec3::new(x, y - sink, z), yaw_i, sz, r, moist << 3, kind));
@@ -945,14 +1073,28 @@ pub fn build(field: &Alpine, surf: &Surface, cam: DVec3, yaw: f64, half_fov: f64
         let mut canopy: HashMap<Cell, Vec<(f64, f64, f64)>> = HashMap::new();
         for (p, r) in &s.rocks {
             if (p.x - cam.x).hypot(p.z - cam.z) < reach + 8.0 {
-                grid.entry(((p.x / cs).floor() as i64, (p.z / cs).floor() as i64)).or_default().push((p.x, p.z, *r as f64 * 0.92, 0.35 + 0.25 * *r as f64));
+                grid.entry(((p.x / cs).floor() as i64, (p.z / cs).floor() as i64)).or_default().push((
+                    p.x,
+                    p.z,
+                    *r as f64 * 0.92,
+                    0.35 + 0.25 * *r as f64,
+                ));
             }
         }
         for (p, cr, h) in &s.crowns {
             if (p.x - cam.x).hypot(p.z - cam.z) < reach + 12.0 {
                 let trunk = (0.012 * *h as f64).clamp(0.08, 0.45);
-                grid.entry(((p.x / cs).floor() as i64, (p.z / cs).floor() as i64)).or_default().push((p.x, p.z, trunk + 0.12, 0.45));
-                canopy.entry(((p.x / cs).floor() as i64, (p.z / cs).floor() as i64)).or_default().push((p.x, p.z, *cr as f64 * 1.15));
+                grid.entry(((p.x / cs).floor() as i64, (p.z / cs).floor() as i64)).or_default().push((
+                    p.x,
+                    p.z,
+                    trunk + 0.12,
+                    0.45,
+                ));
+                canopy.entry(((p.x / cs).floor() as i64, (p.z / cs).floor() as i64)).or_default().push((
+                    p.x,
+                    p.z,
+                    *cr as f64 * 1.15,
+                ));
             }
         }
         let tiles: Vec<(DVec3, f32, u32, u32, u32)> = (cj - n..=cj + n)
@@ -969,7 +1111,8 @@ pub fn build(field: &Alpine, surf: &Surface, cam: DVec3, yaw: f64, half_fov: f64
                     }
                     // view wedge with a margin of the tile size (near tiles at the frustum edge)
                     let ang = dx.atan2(-dz);
-                    let da = (ang - yaw + std::f64::consts::PI).rem_euclid(std::f64::consts::TAU) - std::f64::consts::PI;
+                    let da =
+                        (ang - yaw + std::f64::consts::PI).rem_euclid(std::f64::consts::TAU) - std::f64::consts::PI;
                     if da.abs() > half_fov + 0.06 + (1.0 / dh.max(0.5)).min(3.2) {
                         continue;
                     }
@@ -1002,7 +1145,10 @@ pub fn build(field: &Alpine, surf: &Surface, cam: DVec3, yaw: f64, half_fov: f64
                     let small = perlin2(x / 2.3, z / 2.3, sd + 81);
                     let patch = smoothstep(-0.6, 0.15, 0.35 * big + 0.55 * mid + 0.45 * small);
                     let shade = smoothstep(0.45, 1.6, cover);
-                    let dens = smoothstep(1.0, 0.5, slope) * smoothstep(1380.0, 1220.0, c[0]) * (0.42 + 0.58 * patch) * (1.0 - 0.85 * shade);
+                    let dens = smoothstep(1.0, 0.5, slope)
+                        * smoothstep(1380.0, 1220.0, c[0])
+                        * (0.42 + 0.58 * patch)
+                        * (1.0 - 0.85 * shade);
                     let dens = dens.max(hug * smoothstep(1.0, 0.5, slope) * (1.0 - 0.6 * shade));
                     if dens < 0.18 + 0.14 * rand2(i, j, sd + 73) {
                         continue;
@@ -1012,10 +1158,18 @@ pub fn build(field: &Alpine, surf: &Surface, cam: DVec3, yaw: f64, half_fov: f64
                     let e = 0.25;
                     let hx = |o: f64| surf.height(x + o, z).map_or(y, |h| h.0);
                     let hz = |o: f64| surf.height(x, z + o).map_or(y, |h| h.0);
-                    let (gx, gz) = (((hx(e) - hx(-e)) / (2.0 * e)).clamp(-1.0, 1.0), ((hz(e) - hz(-e)) / (2.0 * e)).clamp(-1.0, 1.0));
+                    let (gx, gz) = (
+                        ((hx(e) - hx(-e)) / (2.0 * e)).clamp(-1.0, 1.0),
+                        ((hz(e) - hz(-e)) / (2.0 * e)).clamp(-1.0, 1.0),
+                    );
                     let stand = perlin2(x / 40.0, z / 40.0, sd + 84);
                     let drift = perlin2(x / 4.0, z / 4.0, sd + 76);
-                    let hs = (0.45 + 0.6 * dens.min(1.0)) * (0.8 + 0.3 * stand) * (0.78 + 0.22 * drift) * (0.85 + 0.3 * rand2(i, j, sd + 77)) * (1.0 + 0.55 * hug) * (1.0 - 0.35 * shade);
+                    let hs = (0.45 + 0.6 * dens.min(1.0))
+                        * (0.8 + 0.3 * stand)
+                        * (0.78 + 0.22 * drift)
+                        * (0.85 + 0.3 * rand2(i, j, sd + 77))
+                        * (1.0 + 0.55 * hug)
+                        * (1.0 - 0.35 * shade);
                     // species
                     let tus = perlin2(x / 6.0, z / 6.0, sd + 82);
                     let seedf = perlin2(x / 11.0, z / 11.0, sd + 83);
@@ -1041,7 +1195,14 @@ pub fn build(field: &Alpine, surf: &Surface, cam: DVec3, yaw: f64, half_fov: f64
             })
             .collect();
         for (p, hs, var, mat, turn) in tiles {
-            s.push_raw(MESH_GRASS + var, p, cam, turn as f32 * std::f32::consts::FRAC_PI_2, Vec3::new(1.0, hs, 1.0), mat);
+            s.push_raw(
+                MESH_GRASS + var,
+                p,
+                cam,
+                turn as f32 * std::f32::consts::FRAC_PI_2,
+                Vec3::new(1.0, hs, 1.0),
+                mat,
+            );
         }
     }
     s

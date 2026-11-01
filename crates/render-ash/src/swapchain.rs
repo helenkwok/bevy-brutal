@@ -2,8 +2,8 @@
 //! which is blitted to the acquired swapchain image; so pipelines never depend on the surface format.
 use ash::vk;
 
-use crate::context::VkContext;
 use crate::BackendError;
+use crate::context::VkContext;
 
 pub struct Swapchain {
     pub loader: ash::khr::swapchain::Device,
@@ -86,7 +86,8 @@ impl Swapchain {
     pub fn acquire(&self, slot: usize) -> Result<Option<u32>, BackendError> {
         // SAFETY: swapchain and semaphore are live; the semaphore is unsignalled because the previous
         // submit that waited on it (same slot) completed (timeline wait in begin_frame).
-        match unsafe { self.loader.acquire_next_image(self.swapchain, u64::MAX, self.acquire[slot], vk::Fence::null()) } {
+        match unsafe { self.loader.acquire_next_image(self.swapchain, u64::MAX, self.acquire[slot], vk::Fence::null()) }
+        {
             Ok((i, _suboptimal)) => Ok(Some(i)),
             Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => Ok(None),
             Err(e) => Err(e.into()),

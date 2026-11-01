@@ -32,7 +32,8 @@ use std::time::Instant;
 const HANDOFF_PX: f64 = 24.0;
 /// Bodies smaller than this (radius, render px) are splatted on the CPU.
 const SPLAT_PX: f64 = 0.75;
-const LAYERS: [&str; 11] = ["sun", "mercury", "venus", "earth", "earth_clouds", "moon", "mars", "jupiter", "saturn", "uranus", "neptune"];
+const LAYERS: [&str; 11] =
+    ["sun", "mercury", "venus", "earth", "earth_clouds", "moon", "mars", "jupiter", "saturn", "uranus", "neptune"];
 
 fn layer_of(id: BodyId) -> f32 {
     match id {
@@ -95,7 +96,9 @@ struct Calib {
 }
 
 fn load_png_rgba(p: &Path) -> (u32, u32, Vec<u8>) {
-    let dec = png::Decoder::new(std::io::BufReader::new(std::fs::File::open(p).unwrap_or_else(|e| panic!("{}: {e}", p.display()))));
+    let dec = png::Decoder::new(std::io::BufReader::new(
+        std::fs::File::open(p).unwrap_or_else(|e| panic!("{}: {e}", p.display())),
+    ));
     let mut r = dec.read_info().unwrap();
     let mut buf = vec![0u8; r.output_buffer_size().unwrap()];
     let info = r.next_frame(&mut buf).unwrap();
@@ -168,7 +171,8 @@ fn true_colour(id: BodyId) -> Option<([u8; 3], f64)> {
 /// Replace a layer's chroma: linear = target x (luminance / mean luminance).
 fn colourize(px: &mut [u8], target: [f64; 3]) {
     let lut: Vec<f64> = (0..=255u8).map(s2l).collect();
-    let lums: Vec<f64> = px.chunks(4).map(|p| lum([lut[p[0] as usize], lut[p[1] as usize], lut[p[2] as usize]])).collect();
+    let lums: Vec<f64> =
+        px.chunks(4).map(|p| lum([lut[p[0] as usize], lut[p[1] as usize], lut[p[2] as usize]])).collect();
     let mean = lums.iter().sum::<f64>() / lums.len() as f64;
     let tl = lum(target);
     for (p, l) in px.chunks_mut(4).zip(lums) {
@@ -261,7 +265,18 @@ fn rows(m: DMat3) -> [[f64; 3]; 3] {
 
 /// Line-up layout: (position, rotation) per body, Sun limb at the left edge.
 fn lineup(sys: &System) -> Vec<(DVec3, DMat3)> {
-    let order = [BodyId::Sun, BodyId::Mercury, BodyId::Venus, BodyId::Earth, BodyId::Moon, BodyId::Mars, BodyId::Jupiter, BodyId::Saturn, BodyId::Uranus, BodyId::Neptune];
+    let order = [
+        BodyId::Sun,
+        BodyId::Mercury,
+        BodyId::Venus,
+        BodyId::Earth,
+        BodyId::Moon,
+        BodyId::Mars,
+        BodyId::Jupiter,
+        BodyId::Saturn,
+        BodyId::Uranus,
+        BodyId::Neptune,
+    ];
     let mut x = 0.0f64;
     let mut out = vec![(DVec3::ZERO, DMat3::IDENTITY); sys.bodies.len()];
     for id in order {
@@ -315,7 +330,12 @@ fn build_frame(sys: &System, cal: &Calib, s: &Shot, rw: u32, rh: u32, ss: u32) -
         p.light = [l.x as f32, l.y as f32, l.z as f32, 1.0];
     }
     p.view = [sys.bodies.len() as f32, flags as f32, AU_M as f32, 0.0];
-    p.corona = [(s.occulter * solar::SUN_RADIUS_M / sun_rel.length()).asin() as f32 * (s.occulter > 0.0) as u8 as f32, 1.0, 0.8, 1.0];
+    p.corona = [
+        (s.occulter * solar::SUN_RADIUS_M / sun_rel.length()).asin() as f32 * (s.occulter > 0.0) as u8 as f32,
+        1.0,
+        0.8,
+        1.0,
+    ];
     let sp = sys.bodies[0].0.pole_ecliptic(sys.epoch);
     p.sunpole = [sp.x as f32, sp.y as f32, sp.z as f32, 0.06];
     p.limb = [0.45, 0.62, 0.85, px_rad as f32];
@@ -330,10 +350,20 @@ fn build_frame(sys: &System, cal: &Calib, s: &Shot, rw: u32, rh: u32, ss: u32) -
         let skip = r_px.max(ring_px) < SPLAT_PX;
         let (shade, tint, mut extra) = shading(b, cal);
         let handoff = b.id == BodyId::Earth && s.mode == Mode::System && r_px / ss as f64 > HANDOFF_PX;
-        extra[0] = if handoff { 2.0 } else if skip { 1.0 } else { 0.0 };
+        extra[0] = if handoff {
+            2.0
+        } else if skip {
+            1.0
+        } else {
+            0.0
+        };
         earth_handoff |= handoff;
         let r = rows(rot);
-        let ring = if b.ring_m.1 > 0.0 { [b.ring_m.0 as f32, b.ring_m.1 as f32, RING_GAIN, 0.0] } else { [0.0, 0.0, 0.0, -1.0] };
+        let ring = if b.ring_m.1 > 0.0 {
+            [b.ring_m.0 as f32, b.ring_m.1 as f32, RING_GAIN, 0.0]
+        } else {
+            [0.0, 0.0, 0.0, -1.0]
+        };
         p.bodies[i] = SystemBodyGpu {
             pos: [rel.x as f32, rel.y as f32, rel.z as f32, b.r_eq_m as f32],
             r0: [r[0][0] as f32, r[0][1] as f32, r[0][2] as f32, (b.r_pol_m / b.r_eq_m) as f32],
@@ -349,7 +379,6 @@ fn build_frame(sys: &System, cal: &Calib, s: &Shot, rw: u32, rh: u32, ss: u32) -
     Frame { params: p, bodies, earth_handoff, ty, aspect }
 }
 
-
 struct Star {
     dir: DVec3,
     flux: f64,
@@ -363,7 +392,11 @@ fn load_stars(path: &Path) -> Vec<Star> {
     let mut out = Vec::new();
     for l in txt.split(|&b| b == b'\n') {
         let f = |a: usize, b: usize| -> Option<f64> { std::str::from_utf8(l.get(a - 1..b)?).ok()?.trim().parse().ok() };
-        let (Some(rh), Some(rm), Some(rs), Some(dd), Some(dm), Some(ds), Some(v)) = (f(76, 77), f(78, 79), f(80, 83), f(85, 86), f(87, 88), f(89, 90), f(103, 107)) else { continue };
+        let (Some(rh), Some(rm), Some(rs), Some(dd), Some(dm), Some(ds), Some(v)) =
+            (f(76, 77), f(78, 79), f(80, 83), f(85, 86), f(87, 88), f(89, 90), f(103, 107))
+        else {
+            continue;
+        };
         let sign = if l.get(83) == Some(&b'-') { -1.0 } else { 1.0 };
         let ra = (rh + rm / 60.0 + rs / 3600.0) * 15.0;
         let dec = sign * (dd + dm / 60.0 + ds / 3600.0);
@@ -371,7 +404,11 @@ fn load_stars(path: &Path) -> Vec<Star> {
         let t = ((bv + 0.4) / 2.4) as f32;
         let rgb = [0.75 + 0.5 * t, 0.85 + 0.1 * (1.0 - (2.0 * t - 1.0).abs()), 1.25 - 0.9 * t];
         let y = 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2];
-        out.push(Star { dir: m * planet::cube::latlon_dir(dec, ra), flux: 10f64.powf(-0.4 * (v + 26.74)), rgb: rgb.map(|c| c / y) });
+        out.push(Star {
+            dir: m * planet::cube::latlon_dir(dec, ra),
+            flux: 10f64.powf(-0.4 * (v + 26.74)),
+            rgb: rgb.map(|c| c / y),
+        });
     }
     out
 }
@@ -394,7 +431,9 @@ fn splat(hdr: &mut [[f32; 4]], rw: u32, rh: u32, fx: f64, fy: f64, l: f32, rgb: 
         return false;
     }
     let (ax, ay) = (fx - ix as f64, fy - iy as f64);
-    for (dx, dy, wgt) in [(0, 0, (1.0 - ax) * (1.0 - ay)), (1, 0, ax * (1.0 - ay)), (0, 1, (1.0 - ax) * ay), (1, 1, ax * ay)] {
+    for (dx, dy, wgt) in
+        [(0, 0, (1.0 - ax) * (1.0 - ay)), (1, 0, ax * (1.0 - ay)), (0, 1, (1.0 - ax) * ay), (1, 1, ax * ay)]
+    {
         let (xx, yy) = (ix + dx, iy + dy);
         if xx < 0 || yy < 0 || xx >= rw as i64 || yy >= rh as i64 {
             continue;
@@ -508,21 +547,44 @@ fn shots(sys: &System, aspect: f64) -> Vec<Shot> {
     let moon = sys.get(BodyId::Moon).2;
     let z = DVec3::Z;
     let mut v = Vec::new();
-    let sh = |name: &str, cam: Cam, exposure: f64, note: &str| Shot { name: name.into(), cam, exposure, mode: Mode::System, occulter: 0.0, corona: false, hud: false, note: note.into(), epoch: None };
+    let sh = |name: &str, cam: Cam, exposure: f64, note: &str| Shot {
+        name: name.into(),
+        cam,
+        exposure,
+        mode: Mode::System,
+        occulter: 0.0,
+        corona: false,
+        hud: false,
+        note: note.into(),
+        epoch: None,
+    };
     // camera azimuth: behind the Sun as seen from the Earth (the Earth beyond the Sun, top of frame)
     let az = (-earth).normalize();
     let elev = |e: f64| (az * e.to_radians().cos() + z * e.to_radians().sin()).normalize();
-    let mut ov = sh("SS1_overview", cam(sun + elev(60.0) * 50.0 * AU_M, sun, z, 60.0), 3.0e4, "50 AU from the Sun, 60 deg above the ecliptic, 60 deg fov: the whole system at true scale");
+    let mut ov = sh(
+        "SS1_overview",
+        cam(sun + elev(60.0) * 50.0 * AU_M, sun, z, 60.0),
+        3.0e4,
+        "50 AU from the Sun, 60 deg above the ecliptic, 60 deg fov: the whole system at true scale",
+    );
     ov.hud = true;
     ov.corona = true;
     v.push(ov);
-    let mut inner = sh("SS1_inner", cam(sun + elev(50.0) * 3.2 * AU_M, sun, z, 60.0), 3.0e4, "3.2 AU, 50 deg above the ecliptic: Mercury to Mars");
+    let mut inner = sh(
+        "SS1_inner",
+        cam(sun + elev(50.0) * 3.2 * AU_M, sun, z, 60.0),
+        3.0e4,
+        "3.2 AU, 50 deg above the ecliptic: Mercury to Mars",
+    );
     inner.hud = true;
     inner.corona = true;
     v.push(inner);
     // the approach: distance (log) 50 AU -> the EPIC frame, direction slerp, target Sun -> Earth
-    let epic_pos = DVec3::new(13.389f64.to_radians().cos() * 22.513f64.to_radians().cos(), 13.389f64.to_radians().cos() * 22.513f64.to_radians().sin(), 13.389f64.to_radians().sin())
-        * (planet::EARTH_RADIUS_M + 1_475_183.0e3);
+    let epic_pos = DVec3::new(
+        13.389f64.to_radians().cos() * 22.513f64.to_radians().cos(),
+        13.389f64.to_radians().cos() * 22.513f64.to_radians().sin(),
+        13.389f64.to_radians().sin(),
+    ) * (planet::EARTH_RADIUS_M + 1_475_183.0e3);
     let d_end = solar::ecliptic_from_ecef(ep, epic_pos).normalize();
     let dist_end = epic_pos.length();
     let up_end = solar::ecliptic_from_ecef(ep, DVec3::Z);
@@ -545,16 +607,31 @@ fn shots(sys: &System, aspect: f64) -> Vec<Shot> {
         // while smaller (keeps its integrated signal), capped at the overview's 3e4
         let r_px = (planet::EARTH_RADIUS_M / (earth - pos).length()) / (fov.to_radians() / 1080.0);
         let exposure = (2.4 * (2.0 / r_px).max(1.0).powi(2)).min(3.0e4);
-        let mut s = sh(&format!("SS1_path_{k:02}"), cam(pos, target, up, fov), exposure, "approach: log distance, slerped direction, target Sun -> Earth; last = the E2_vs_epic geometry");
+        let mut s = sh(
+            &format!("SS1_path_{k:02}"),
+            cam(pos, target, up, fov),
+            exposure,
+            "approach: log distance, slerped direction, target Sun -> Earth; last = the E2_vs_epic geometry",
+        );
         s.hud = k < n - 2;
         s.corona = k < 3;
         v.push(s);
     }
     // the Sun: from the Earth's distance, limb darkening; and the occulted corona
-    let mut sun_shot = sh("SS1_sun", cam(earth, sun, z, 0.75), 4.0e-5, "the photosphere from 1 AU: limb darkening (I = I0 mu^a, a = 0.45 / 0.62 / 0.85 r/g/b), granulation map at 6% contrast");
+    let mut sun_shot = sh(
+        "SS1_sun",
+        cam(earth, sun, z, 0.75),
+        4.0e-5,
+        "the photosphere from 1 AU: limb darkening (I = I0 mu^a, a = 0.45 / 0.62 / 0.85 r/g/b), granulation map at 6% contrast",
+    );
     sun_shot.corona = true;
     v.push(sun_shot);
-    let mut cor = sh("SS1_corona", cam(earth, sun, z, 3.0), 60.0, "occulting disc 1.2 R_sun, K + F corona (Baumbach), noise streamers: ~1e-6 of the disc, so only an occulted, 1.5e6x brighter exposure shows it");
+    let mut cor = sh(
+        "SS1_corona",
+        cam(earth, sun, z, 3.0),
+        60.0,
+        "occulting disc 1.2 R_sun, K + F corona (Baumbach), noise streamers: ~1e-6 of the disc, so only an occulted, 1.5e6x brighter exposure shows it",
+    );
     cor.occulter = 1.2;
     cor.corona = true;
     v.push(cor);
@@ -582,7 +659,12 @@ fn shots(sys: &System, aspect: f64) -> Vec<Shot> {
         let (b, _, pos, _) = s17.get(BodyId::Saturn);
         let r_au = pos.length() / AU_M;
         let e = 2.4 * r_au * r_au * 0.434 / b.geometric_albedo;
-        let mut s = sh("SS1_saturn_2017", closeup(&s17, BodyId::Saturn, 40.0, 20.0, true, 0.85, fov, aspect), e, "Saturn at 2017-04-26 (Cassini Grand Finale epoch, Sun 26 deg above the rings): comparison for the 2026 shot");
+        let mut s = sh(
+            "SS1_saturn_2017",
+            closeup(&s17, BodyId::Saturn, 40.0, 20.0, true, 0.85, fov, aspect),
+            e,
+            "Saturn at 2017-04-26 (Cassini Grand Finale epoch, Sun 26 deg above the rings): comparison for the 2026 shot",
+        );
         s.epoch = Some(ep17);
         v.push(s);
     }
@@ -600,7 +682,12 @@ fn shots(sys: &System, aspect: f64) -> Vec<Shot> {
         let pos = DVec3::new(2.7e8, 0.0, 8.0e11);
         let w_m = 5.5e8;
         let fov = 2.0 * ((w_m / aspect / 2.0) / pos.z).atan().to_degrees();
-        let mut s = sh("SS1_scale_strip", cam(pos, DVec3::new(2.7e8, 0.0, 0.0), DVec3::Y, fov), 1.6, "true relative sizes (synthetic line-up, fixed light, no shadows): Sun limb at the left");
+        let mut s = sh(
+            "SS1_scale_strip",
+            cam(pos, DVec3::new(2.7e8, 0.0, 0.0), DVec3::Y, fov),
+            1.6,
+            "true relative sizes (synthetic line-up, fixed light, no shadows): Sun limb at the left",
+        );
         s.mode = Mode::LineUp;
         v.push(s);
     }
@@ -623,7 +710,16 @@ fn run_earth(bin: &Path, sys: &System, s: &Shot, w: u32, h: u32, ss: u32, tmp: &
     let st = std::process::Command::new(bin)
         .args(["--pack", "/workspace/data/earth/earth.pln", "--out"])
         .arg(tmp)
-        .args(["--size", &format!("{w}x{h}"), "--ss", &ss.to_string(), "--fov", &format!("{}", s.cam.fov_y), "--name", &s.name])
+        .args([
+            "--size",
+            &format!("{w}x{h}"),
+            "--ss",
+            &ss.to_string(),
+            "--fov",
+            &format!("{}", s.cam.fov_y),
+            "--name",
+            &s.name,
+        ])
         .args(["--cam-ecef", &format!("{},{},{},{},{},{},{},{},{}", pos.x, pos.y, pos.z, f.x, f.y, f.z, u.x, u.y, u.z)])
         .env("STARS", "0")
         .env("HDR_OUT", "1")
@@ -648,7 +744,9 @@ fn main() {
     let which = arg("--shot").unwrap_or("all".into());
     let out = PathBuf::from(arg("--out").unwrap_or("out/quality/steps".into()));
     let layers_dir = PathBuf::from(arg("--layers").unwrap_or("/workspace/data/solar/layers".into()));
-    let (w, h) = arg("--size").and_then(|s| s.split_once('x').map(|(a, b)| (a.parse().unwrap(), b.parse().unwrap()))).unwrap_or((1920u32, 1080u32));
+    let (w, h) = arg("--size")
+        .and_then(|s| s.split_once('x').map(|(a, b)| (a.parse().unwrap(), b.parse().unwrap())))
+        .unwrap_or((1920u32, 1080u32));
     let ss: u32 = arg("--ss").and_then(|s| s.parse().ok()).unwrap_or(2);
     let (rw, rh) = (w * ss, h * ss);
     let ep = Epoch::epic();
@@ -663,12 +761,19 @@ fn main() {
     let list: Vec<Shot> = all.into_iter().filter(|s| which == "all" || which.split(',').any(|n| n == s.name)).collect();
     assert!(!list.is_empty(), "no shot named {which}");
     std::fs::create_dir_all(&out).unwrap();
-    let earth_bin = arg("--earth-bin").map(PathBuf::from).unwrap_or_else(|| std::env::current_exe().unwrap().with_file_name("earth"));
+    let earth_bin = arg("--earth-bin")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| std::env::current_exe().unwrap().with_file_name("earth"));
     let validate = std::env::var("PLANET_VALIDATE").map(|v| v != "0").unwrap_or(true);
-    let mut be = AshBackend::new(render_ash::BackendConfig { max_instances: 16, validation: validate, ..Default::default() }, None).expect("vulkan");
+    let mut be = AshBackend::new(
+        render_ash::BackendConfig { max_instances: 16, validation: validate, ..Default::default() },
+        None,
+    )
+    .expect("vulkan");
     // textures
     let tl = Instant::now();
-    let loaded: Vec<(u32, u32, Vec<u8>)> = LAYERS.par_iter().map(|n| load_png_rgba(&layers_dir.join(format!("{n}.png")))).collect();
+    let loaded: Vec<(u32, u32, Vec<u8>)> =
+        LAYERS.par_iter().map(|n| load_png_rgba(&layers_dir.join(format!("{n}.png")))).collect();
     let (lw, lh) = (loaded[0].0, loaded[0].1);
     assert!(loaded.iter().all(|l| l.0 == lw && l.1 == lh), "layers must share one size");
     let mut loaded = loaded;
@@ -691,10 +796,17 @@ fn main() {
     let cal = Calib { mean: loaded.iter().map(|l| mean_linear(l.0, l.1, &l.2)).collect() };
     let ring = load_png_rgba(&layers_dir.join("saturn_ring.png"));
     let layer_px: Vec<Vec<u8>> = loaded.into_iter().map(|l| l.2).collect();
-    let tex: SystemTextures = be.system_upload(lw, lh, &layer_px, ring.0, ring.1, std::slice::from_ref(&ring.2)).expect("upload");
+    let tex: SystemTextures =
+        be.system_upload(lw, lh, &layer_px, ring.0, ring.1, std::slice::from_ref(&ring.2)).expect("upload");
     drop(layer_px);
     let load_ms = tl.elapsed().as_secs_f64() * 1e3;
-    eprintln!("solar: {} layers {lw}x{lh} + ring {}x{}, {:.0} MB, {load_ms:.0} ms", LAYERS.len(), ring.0, ring.1, tex.bytes as f64 / 1048576.0);
+    eprintln!(
+        "solar: {} layers {lw}x{lh} + ring {}x{}, {:.0} MB, {load_ms:.0} ms",
+        LAYERS.len(),
+        ring.0,
+        ring.1,
+        tex.bytes as f64 / 1048576.0
+    );
     let stars = load_stars(Path::new("/workspace/data/earth/bsc5.dat"));
     let tmp = std::env::temp_dir().join("ss1_earth");
     std::fs::create_dir_all(&tmp).unwrap();
@@ -843,7 +955,13 @@ fn main() {
             v + halo_w * 0.5 / (std::f32::consts::PI * r0 * r0) * (1.0 + r2 / (r0 * r0)).powf(-1.5)
         };
         // per bright pixel: a circular reach where its halo drops below 2e-5, minus the value there (no edge)
-        let reach: Vec<f32> = bright.iter().map(|b| (r0 * (b.3 * halo_w * 0.5 / (std::f32::consts::PI * r0 * r0) / 2.0e-5).powf(1.0 / 3.0)).clamp(12.0, 1600.0)).collect();
+        let reach: Vec<f32> = bright
+            .iter()
+            .map(|b| {
+                (r0 * (b.3 * halo_w * 0.5 / (std::f32::consts::PI * r0 * r0) / 2.0e-5).powf(1.0 / 3.0))
+                    .clamp(12.0, 1600.0)
+            })
+            .collect();
         let nbright = bright.len();
         if nbright > 0 {
             acc.par_chunks_mut(wu).enumerate().for_each(|(y, row)| {
@@ -869,7 +987,10 @@ fn main() {
                 }
             });
         }
-        let rgb8: Vec<u8> = acc.par_iter().flat_map_iter(|c| c.map(|v| (planet::bake::linear_to_srgb(aces(v)) * 255.0 + 0.5) as u8)).collect();
+        let rgb8: Vec<u8> = acc
+            .par_iter()
+            .flat_map_iter(|c| c.map(|v| (planet::bake::linear_to_srgb(aces(v)) * 255.0 + 0.5) as u8))
+            .collect();
         let post_ms = tp.elapsed().as_secs_f64() * 1e3;
         write_png(&out.join(format!("{}.png", s.name)), w, h, &rgb8);
         // json: camera, bodies (screen position / size), orbits (for the HUD), timings
@@ -880,7 +1001,13 @@ fn main() {
             .map(|&(i, r_px, skip, rel)| {
                 let b = &sys.bodies[i].0;
                 let scr = project(&s.cam, fr.ty, fr.aspect, rw, rh, rel).map(to_out);
-                let drawn = if fr.earth_handoff && b.id == BodyId::Earth { "planet_renderer" } else if skip { "flux_point" } else { "disc" };
+                let drawn = if fr.earth_handoff && b.id == BodyId::Earth {
+                    "planet_renderer"
+                } else if skip {
+                    "flux_point"
+                } else {
+                    "disc"
+                };
                 format!(
                     "{{\"name\":\"{}\",\"dist_m\":{:.6e},\"radius_px\":{:.4},\"screen\":{},\"drawn\":\"{drawn}\"}}",
                     b.id.name(),
@@ -897,7 +1024,11 @@ fn main() {
                 .map(|&id| {
                     let pts: Vec<String> = solar::orbit_polyline(id, ep, 720)
                         .iter()
-                        .map(|p| project(&s.cam, fr.ty, fr.aspect, rw, rh, *p - s.cam.pos).map(to_out).map_or("null".into(), |q| format!("[{:.1},{:.1}]", q.0, q.1)))
+                        .map(|p| {
+                            project(&s.cam, fr.ty, fr.aspect, rw, rh, *p - s.cam.pos)
+                                .map(to_out)
+                                .map_or("null".into(), |q| format!("[{:.1},{:.1}]", q.0, q.1))
+                        })
                         .collect();
                     format!("{{\"name\":\"{}\",\"pts\":[{}]}}", id.name(), pts.join(","))
                 })
@@ -927,7 +1058,13 @@ fn main() {
             orbits_json.join(",")
         );
         std::fs::write(out.join(format!("{}.json", s.name)), &json).unwrap();
-        println!("{{\"shot\":\"{}\",\"gpu_ms\":{:.1},\"system_wall_ms\":{sys_ms:.0},\"earth_wall_ms\":{earth_ms:.0},\"handoff\":{},\"flux_points\":{},\"stars\":{nstars},\"validation_errors\":{errs}}}", s.name, t.gpu_ms, fr.earth_handoff, points.len());
+        println!(
+            "{{\"shot\":\"{}\",\"gpu_ms\":{:.1},\"system_wall_ms\":{sys_ms:.0},\"earth_wall_ms\":{earth_ms:.0},\"handoff\":{},\"flux_points\":{},\"stars\":{nstars},\"validation_errors\":{errs}}}",
+            s.name,
+            t.gpu_ms,
+            fr.earth_handoff,
+            points.len()
+        );
     }
     be.system_free(tex);
 }

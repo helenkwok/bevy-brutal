@@ -16,7 +16,9 @@ use mem::FrameArena;
 use render_ash::cull::{look_at, vk_perspective};
 use render_ash::validation::message_counts;
 use render_ash::{AshBackend, BackendConfig, TerrainGpuConfig};
-use terrain::{CHUNK_SAMPLES, ChunkRequest, NoiseParams, PADDED, TerrainVertex, grid_indices, heightmap_simd, mesh_chunk};
+use terrain::{
+    CHUNK_SAMPLES, ChunkRequest, NoiseParams, PADDED, TerrainVertex, grid_indices, heightmap_simd, mesh_chunk,
+};
 
 const CHUNK_M: f32 = (CHUNK_SAMPLES - 1) as f32;
 const MAX_NEW_PER_FRAME: usize = 16;
@@ -55,12 +57,22 @@ fn main() {
     let png = arg(&args, "--png");
     let validate = args.iter().any(|a| a == "--validate");
 
-    let mut b = AshBackend::new(BackendConfig { max_instances: 1, extent: (w, h), validation: validate, ..Default::default() }, None).expect("backend");
+    let mut b = AshBackend::new(
+        BackendConfig { max_instances: 1, extent: (w, h), validation: validate, ..Default::default() },
+        None,
+    )
+    .expect("backend");
     b.enable_terrain(TerrainGpuConfig { slots, ..Default::default() }, &grid_indices()).unwrap();
-    eprintln!("device: {} | {w}x{h} | slots {slots} | radius {radius} | validation {}", b.device_name(), b.ctx.validation_enabled);
+    eprintln!(
+        "device: {} | {w}x{h} | slots {slots} | radius {radius} | validation {}",
+        b.device_name(),
+        b.ctx.validation_enabled
+    );
 
     let p = NoiseParams::default();
-    let mut arena = FrameArena::with_capacity(MAX_NEW_PER_FRAME * (CHUNK_SAMPLES * CHUNK_SAMPLES * size_of::<TerrainVertex>() + 64));
+    let mut arena = FrameArena::with_capacity(
+        MAX_NEW_PER_FRAME * (CHUNK_SAMPLES * CHUNK_SAMPLES * size_of::<TerrainVertex>() + 64),
+    );
     let mut hm = vec![0.0f32; PADDED * PADDED];
     let (mut gen_ms, mut up_ms, mut frame_ms) = (Vec::new(), Vec::new(), Vec::new());
     let proj = vk_perspective(1.0, w as f32 / h as f32, 0.5, 2000.0);
@@ -126,7 +138,8 @@ fn main() {
         let vp = (proj * look_at(eye, at, Vec3::Y)).to_cols_array_2d();
         for f in 0..8 {
             arena.reset();
-            let missing: Vec<[i32; 2]> = wanted.iter().copied().filter(|&c| !b.terrain_is_resident(c)).take(MAX_NEW_PER_FRAME).collect();
+            let missing: Vec<[i32; 2]> =
+                wanted.iter().copied().filter(|&c| !b.terrain_is_resident(c)).take(MAX_NEW_PER_FRAME).collect();
             for c in missing {
                 let req = ChunkRequest { coord: c, lod: 0, seed: 42 };
                 heightmap_simd(&req, &p, &mut hm);

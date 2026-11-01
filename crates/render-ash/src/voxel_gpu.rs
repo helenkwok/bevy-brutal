@@ -137,7 +137,8 @@ impl AshBackend {
         let (desc, samples) = describe(cfg, jobs)?;
         let tables = pack_tables();
         let cpb = (n * n * n + 6 * n * n) as u32;
-        let cells = u32::try_from(jobs.len() as u64 * cpb as u64).map_err(|_| BackendError::BadConfig("too many voxel cells"))?;
+        let cells = u32::try_from(jobs.len() as u64 * cpb as u64)
+            .map_err(|_| BackendError::BadConfig("too many voxel cells"))?;
         if jobs.len() > 65_535 {
             return Err(BackendError::BadConfig("GPU voxel mesher: > 65535 bricks per batch"));
         }
@@ -153,12 +154,24 @@ impl AshBackend {
         bufs.push(upload(&mut self.ctx, "vox_tables", bytemuck::cast_slice(&tables))?);
         bufs.push(upload(&mut self.ctx, "vox_bricks", bytemuck::cast_slice(&desc))?);
         bufs.push(upload(&mut self.ctx, "vox_samples", bytemuck::cast_slice(&samples))?);
-        bufs.push(GpuBuffer::new(&mut self.ctx, "vox_counts", cells as u64 * 4, sda | vk::BufferUsageFlags::TRANSFER_SRC, MemoryLocation::GpuOnly)?);
+        bufs.push(GpuBuffer::new(
+            &mut self.ctx,
+            "vox_counts",
+            cells as u64 * 4,
+            sda | vk::BufferUsageFlags::TRANSFER_SRC,
+            MemoryLocation::GpuOnly,
+        )?);
         for &len in &scan_levels(cells)[1..] {
             bufs.push(GpuBuffer::new(&mut self.ctx, "vox_scan", len as u64 * 4, sda, MemoryLocation::GpuOnly)?);
         }
         // last count + last offset -> total triangles
-        let tail = GpuBuffer::new(&mut self.ctx, "vox_tail", 8, sda | vk::BufferUsageFlags::TRANSFER_DST, MemoryLocation::GpuToCpu)?;
+        let tail = GpuBuffer::new(
+            &mut self.ctx,
+            "vox_tail",
+            8,
+            sda | vk::BufferUsageFlags::TRANSFER_DST,
+            MemoryLocation::GpuToCpu,
+        )?;
         let scratch: Vec<u64> = bufs[4..].iter().map(|b| b.address).collect();
         let counts_buf = (bufs[3].buffer, bufs[3].address);
         let mut push = VoxPushGpu {
@@ -171,14 +184,24 @@ impl AshBackend {
             cpb,
             pad: [0; 2],
         };
-        let range = [vk::PushConstantRange { stage_flags: vk::ShaderStageFlags::COMPUTE, offset: 0, size: size_of::<VoxPushGpu>() as u32 }];
+        let range = [vk::PushConstantRange {
+            stage_flags: vk::ShaderStageFlags::COMPUTE,
+            offset: 0,
+            size: size_of::<VoxPushGpu>() as u32,
+        }];
         // SAFETY: device valid; create infos reference live data; modules destroyed after creation.
         let (layout, count_p, emit_p, qp) = unsafe {
-            let layout = d.create_pipeline_layout(&vk::PipelineLayoutCreateInfo::default().push_constant_ranges(&range), None)?;
+            let layout =
+                d.create_pipeline_layout(&vk::PipelineLayoutCreateInfo::default().push_constant_ranges(&range), None)?;
             let mods = [shader_module(&d, VOXEL_COUNT_SPV)?, shader_module(&d, VOXEL_EMIT_SPV)?];
             let infos = mods.map(|m| {
                 vk::ComputePipelineCreateInfo::default()
-                    .stage(vk::PipelineShaderStageCreateInfo::default().stage(vk::ShaderStageFlags::COMPUTE).module(m).name(c"main"))
+                    .stage(
+                        vk::PipelineShaderStageCreateInfo::default()
+                            .stage(vk::ShaderStageFlags::COMPUTE)
+                            .module(m)
+                            .name(c"main"),
+                    )
                     .layout(layout)
             });
             let ps = d.create_compute_pipelines(vk::PipelineCache::null(), &infos, None).map_err(|(_, e)| e);
@@ -186,7 +209,10 @@ impl AshBackend {
                 d.destroy_shader_module(m, None);
             }
             let ps = ps?;
-            let qp = d.create_query_pool(&vk::QueryPoolCreateInfo::default().query_type(vk::QueryType::TIMESTAMP).query_count(4), None)?;
+            let qp = d.create_query_pool(
+                &vk::QueryPoolCreateInfo::default().query_type(vk::QueryType::TIMESTAMP).query_count(4),
+                None,
+            )?;
             (layout, ps[0], ps[1], qp)
         };
         use vk::AccessFlags2 as A;
@@ -215,13 +241,25 @@ impl AshBackend {
             // last count before the in-place scan overwrites it
             memory_barrier(&d, cmd, rw, (S::COPY, A::TRANSFER_READ));
             // SAFETY: both buffers live; regions in bounds (cells >= 1).
-            unsafe { d.cmd_copy_buffer(cmd, counts_buf.0, tail_buf, &[vk::BufferCopy { src_offset: last, dst_offset: 0, size: 4 }]) };
+            unsafe {
+                d.cmd_copy_buffer(
+                    cmd,
+                    counts_buf.0,
+                    tail_buf,
+                    &[vk::BufferCopy { src_offset: last, dst_offset: 0, size: 4 }],
+                )
+            };
             memory_barrier(&d, cmd, (S::COPY, A::TRANSFER_READ), rw);
             record_scan(&d, &pipes, cmd, counts_buf.1, counts_buf.1, cells, &scratch);
             memory_barrier(&d, cmd, rw, (S::COPY, A::TRANSFER_READ));
             // SAFETY: as above.
             unsafe {
-                d.cmd_copy_buffer(cmd, counts_buf.0, tail_buf, &[vk::BufferCopy { src_offset: last, dst_offset: 4, size: 4 }]);
+                d.cmd_copy_buffer(
+                    cmd,
+                    counts_buf.0,
+                    tail_buf,
+                    &[vk::BufferCopy { src_offset: last, dst_offset: 4, size: 4 }],
+                );
                 d.cmd_write_timestamp2(cmd, S::ALL_COMMANDS, qp, 1);
             }
             memory_barrier(&d, cmd, (S::COPY, A::TRANSFER_WRITE), (S::HOST, A::HOST_READ));
@@ -248,7 +286,14 @@ impl AshBackend {
                 Some(period) => {
                     let mut t = [0u64; 4];
                     // SAFETY: both submits completed and wrote all 4 queries.
-                    unsafe { d.get_query_pool_results(qp, 0, &mut t, vk::QueryResultFlags::TYPE_64 | vk::QueryResultFlags::WAIT)? };
+                    unsafe {
+                        d.get_query_pool_results(
+                            qp,
+                            0,
+                            &mut t,
+                            vk::QueryResultFlags::TYPE_64 | vk::QueryResultFlags::WAIT,
+                        )?
+                    };
                     let p = period as f64 / 1e6;
                     Some((t[1].saturating_sub(t[0]) + t[3].saturating_sub(t[2])) as f64 * p)
                 }
@@ -264,9 +309,11 @@ impl AshBackend {
             let starts = self.read_brick_starts(counts_buf.0, jobs.len(), cpb)?;
             let mut bricks = Vec::with_capacity(jobs.len());
             for (bi, j) in jobs.iter().enumerate() {
-                let (a, b) = (starts[bi] as usize, if bi + 1 < jobs.len() { starts[bi + 1] as usize } else { total as usize });
+                let (a, b) =
+                    (starts[bi] as usize, if bi + 1 < jobs.len() { starts[bi + 1] as usize } else { total as usize });
                 let o = cfg.grid.brick_origin(j.samples.coord).map(|v| v * SUB);
-                let mut t = GpuBrickTris { ipos: Vec::with_capacity((b - a) * 3), normals: Vec::with_capacity((b - a) * 3) };
+                let mut t =
+                    GpuBrickTris { ipos: Vec::with_capacity((b - a) * 3), normals: Vec::with_capacity((b - a) * 3) };
                 for v in a * 3..b * 3 {
                     let w = &words[v * 6..v * 6 + 6];
                     t.ipos.push([0, 1, 2].map(|i| w[i] as i32 as i64 + o[i]));
@@ -295,13 +342,19 @@ impl AshBackend {
     fn read_brick_starts(&mut self, counts: vk::Buffer, bricks: usize, cpb: u32) -> Result<Vec<u32>, BackendError> {
         let sda = vk::BufferUsageFlags::TRANSFER_DST;
         let mut st = GpuBuffer::new(&mut self.ctx, "vox_starts", bricks as u64 * 4, sda, MemoryLocation::GpuToCpu)?;
-        let regions: Vec<vk::BufferCopy> =
-            (0..bricks).map(|b| vk::BufferCopy { src_offset: b as u64 * cpb as u64 * 4, dst_offset: b as u64 * 4, size: 4 }).collect();
+        let regions: Vec<vk::BufferCopy> = (0..bricks)
+            .map(|b| vk::BufferCopy { src_offset: b as u64 * cpb as u64 * 4, dst_offset: b as u64 * 4, size: 4 })
+            .collect();
         let d = self.ctx.device.clone();
         let r = self.ctx.immediate_submit(|cmd| {
             // SAFETY: both buffers live, regions in bounds; prior submits completed (immediate_submit waits).
             unsafe { d.cmd_copy_buffer(cmd, counts, st.buffer, &regions) };
-            memory_barrier(&d, cmd, (vk::PipelineStageFlags2::COPY, vk::AccessFlags2::TRANSFER_WRITE), (vk::PipelineStageFlags2::HOST, vk::AccessFlags2::HOST_READ));
+            memory_barrier(
+                &d,
+                cmd,
+                (vk::PipelineStageFlags2::COPY, vk::AccessFlags2::TRANSFER_WRITE),
+                (vk::PipelineStageFlags2::HOST, vk::AccessFlags2::HOST_READ),
+            );
         });
         let out = r.map(|()| bytemuck::cast_slice::<u8, u32>(&st.mapped()[..bricks * 4]).to_vec());
         st.destroy(&mut self.ctx);

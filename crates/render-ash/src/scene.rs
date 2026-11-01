@@ -34,7 +34,8 @@ pub fn random_scene(n: usize, seed: u64, mesh_count: u32, bad_mesh_fraction: f32
             let rot = Quat::from_axis_angle(axis, r.range(0.0, std::f32::consts::TAU));
             let s = r.range(0.4, 1.2);
             let scale = Vec3::new(s, s * r.range(0.7, 1.3), s);
-            let mesh_id = if r.next_f32() < bad_mesh_fraction { mesh_count + 7 } else { (i as u32) % mesh_count.max(1) };
+            let mesh_id =
+                if r.next_f32() < bad_mesh_fraction { mesh_count + 7 } else { (i as u32) % mesh_count.max(1) };
             InstanceGpu {
                 model: Mat4::from_scale_rotation_translation(scale, rot, pos).to_cols_array_2d(),
                 mesh_id,

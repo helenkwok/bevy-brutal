@@ -35,7 +35,9 @@ fn crest_zigzag(soften: bool, lod: u8) -> (f32, f32) {
     let lay = UniformLod(lod);
     let r = 64 << lod;
     let region = ([-r, -16, -r], [r, 16 << (lod + 1), r]);
-    let w = if soften { build_world_filtered(&f, &c, &lay, region, lod) } else { build_world(&f, &c, &lay, region, lod) }.unwrap();
+    let w =
+        if soften { build_world_filtered(&f, &c, &lay, region, lod) } else { build_world(&f, &c, &lay, region, lod) }
+            .unwrap();
     let m = w.merged();
     let (s, co) = std::f32::consts::FRAC_PI_6.sin_cos();
     let (mut lo, mut hi) = (f32::MAX, f32::MIN);
@@ -265,7 +267,10 @@ fn q5_alpine_peaks_are_not_truncated_and_skips_are_conservative() {
             summit = summit.max(a.height(x, z, fc));
         }
     }
-    eprintln!("summit {summit:.1} m at ({:.0},{:.0}); meshed top {top:.1} m; bounds {lo_b:.0}..{hi_b:.0}; {skipped} bricks skipped", best.1, best.2);
+    eprintln!(
+        "summit {summit:.1} m at ({:.0},{:.0}); meshed top {top:.1} m; bounds {lo_b:.0}..{hi_b:.0}; {skipped} bricks skipped",
+        best.1, best.2
+    );
     // within one sampling cell at the summit's LOD (the mesh interpolates between lattice points)
     assert!((top - summit).abs() < 4.0, "meshed top {top} vs field summit {summit}");
 }

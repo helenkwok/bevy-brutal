@@ -97,7 +97,13 @@ pub struct FrameTree {
 impl FrameTree {
     /// A tree with a single galaxy root.
     pub fn new(galaxy_name: &str) -> (Self, FrameId) {
-        let root = Frame { name: galaxy_name.into(), level: FrameLevel::Galaxy, parent: None, origin_in_parent: DVec3::ZERO, influence_m: f64::INFINITY };
+        let root = Frame {
+            name: galaxy_name.into(),
+            level: FrameLevel::Galaxy,
+            parent: None,
+            origin_in_parent: DVec3::ZERO,
+            influence_m: f64::INFINITY,
+        };
         (Self { frames: vec![root] }, FrameId(0))
     }
 
@@ -119,11 +125,21 @@ impl FrameTree {
 
     fn check(level: FrameLevel, v: DVec3) -> Result<(), FrameError> {
         let m = v.abs().max_element();
-        if m.is_finite() && m <= level.max_extent_m() { Ok(()) } else { Err(FrameError::OutOfExtent { level, magnitude: m }) }
+        if m.is_finite() && m <= level.max_extent_m() {
+            Ok(())
+        } else {
+            Err(FrameError::OutOfExtent { level, magnitude: m })
+        }
     }
 
     /// Add a child frame one level below `parent`, origin given in parent coordinates.
-    pub fn add(&mut self, parent: FrameId, name: &str, origin_in_parent: DVec3, influence_m: f64) -> Result<FrameId, FrameError> {
+    pub fn add(
+        &mut self,
+        parent: FrameId,
+        name: &str,
+        origin_in_parent: DVec3,
+        influence_m: f64,
+    ) -> Result<FrameId, FrameError> {
         let pl = self.frame(parent).level;
         let level = pl.child().ok_or(FrameError::LocalHasNoChildren)?;
         Self::check(pl, origin_in_parent)?;
@@ -294,7 +310,10 @@ mod tests {
         let b = WorldPos { frame: earth, p: DVec3::new(6.371e6 + 10.0 + 1e-6, 1234.5 + 2.0, -77.25 + 3.0) };
         // exact answer: a - b = (-1e-6, 0, 0)
         let d = t.delta(a, b);
-        assert!((d - DVec3::new(-1e-6, 0.0, 0.0)).abs().max_element() <= 4.0 * FrameLevel::Planet.precision_m(), "{d:?}");
+        assert!(
+            (d - DVec3::new(-1e-6, 0.0, 0.0)).abs().max_element() <= 4.0 * FrameLevel::Planet.precision_m(),
+            "{d:?}"
+        );
         // between two local frames of the same planet: LCA = planet
         assert_eq!(t.lca(site, site2), earth);
     }

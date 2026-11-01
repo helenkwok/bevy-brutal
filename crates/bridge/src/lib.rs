@@ -155,10 +155,7 @@ impl<B: RenderBackend + 'static> Plugin for BrutalRenderPlugin<B> {
     fn build(&self, app: &mut App) {
         app.init_resource::<InstanceScratch>()
             .init_resource::<ViewProj>()
-            .add_systems(
-                PostUpdate,
-                (gather_instances, submit_frame::<B>).chain().after(TransformSystems::Propagate),
-            );
+            .add_systems(PostUpdate, (gather_instances, submit_frame::<B>).chain().after(TransformSystems::Propagate));
     }
 }
 
@@ -231,7 +228,11 @@ mod tests {
         let mut app = test_app();
         let e = app
             .world_mut()
-            .spawn((Transform::from_xyz(0.0, 10.0, 0.0), Particle { velocity: Vec3::ZERO, life: 0.5 }, MeshRef { mesh_id: 0, material_id: 0 }))
+            .spawn((
+                Transform::from_xyz(0.0, 10.0, 0.0),
+                Particle { velocity: Vec3::ZERO, life: 0.5 },
+                MeshRef { mesh_id: 0, material_id: 0 },
+            ))
             .id();
         for _ in 0..10 {
             app.world_mut().spawn((Transform::default(), Particle { velocity: Vec3::X, life: 100.0 }));
@@ -279,10 +280,27 @@ mod tests {
             .insert_non_send(CaptureBackend::default())
             .insert_resource(Universe(tree));
         let start = DVec3::new(-9.0e6, 3.0, 0.0);
-        let cam = app.world_mut().spawn((Transform::default(), FloatingCamera, WorldPosition(WorldPos { frame: p, p: start }))).id();
+        let cam = app
+            .world_mut()
+            .spawn((Transform::default(), FloatingCamera, WorldPosition(WorldPos { frame: p, p: start })))
+            .id();
         // object 5.3 m ahead of the camera's start, plus one that rides along 10.7 m ahead
-        let fixed = app.world_mut().spawn((Transform::default(), MeshRef { mesh_id: 0, material_id: 0 }, WorldPosition(WorldPos { frame: p, p: start + DVec3::new(5.3, 0.0, 0.0) }))).id();
-        let rider = app.world_mut().spawn((Transform::default(), MeshRef { mesh_id: 1, material_id: 0 }, WorldPosition(WorldPos { frame: p, p: start + DVec3::new(10.7, 0.0, 0.0) }))).id();
+        let fixed = app
+            .world_mut()
+            .spawn((
+                Transform::default(),
+                MeshRef { mesh_id: 0, material_id: 0 },
+                WorldPosition(WorldPos { frame: p, p: start + DVec3::new(5.3, 0.0, 0.0) }),
+            ))
+            .id();
+        let rider = app
+            .world_mut()
+            .spawn((
+                Transform::default(),
+                MeshRef { mesh_id: 1, material_id: 0 },
+                WorldPosition(WorldPos { frame: p, p: start + DVec3::new(10.7, 0.0, 0.0) }),
+            ))
+            .id();
         let step = DVec3::new(1777.25, 0.5, 0.0);
         let mut cam_p = start;
         let mut worst = 0.0f32;

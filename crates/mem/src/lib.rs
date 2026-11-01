@@ -2,7 +2,7 @@
 //! fixed-capacity index pool. Unsafe is allowed here; tests must pass under Miri.
 
 use core::cell::{Cell, UnsafeCell};
-use core::mem::{align_of, size_of, MaybeUninit};
+use core::mem::{MaybeUninit, align_of, size_of};
 
 /// Bump arena over a fixed, 64-byte-aligned backing buffer. Allocations live until
 /// [`FrameArena::reset`], which requires `&mut self` and so cannot run while any slice is borrowed.

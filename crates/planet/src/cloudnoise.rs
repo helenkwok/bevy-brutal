@@ -16,7 +16,12 @@ fn hash(mut x: u32) -> u32 {
     x ^ (x >> 16)
 }
 fn h3(x: i32, y: i32, z: i32, seed: u32) -> u32 {
-    hash((x as u32).wrapping_mul(0x8da6_b343) ^ (y as u32).wrapping_mul(0xd816_3841) ^ (z as u32).wrapping_mul(0xcb1a_b31f) ^ seed.wrapping_mul(0x9e37_79b9))
+    hash(
+        (x as u32).wrapping_mul(0x8da6_b343)
+            ^ (y as u32).wrapping_mul(0xd816_3841)
+            ^ (z as u32).wrapping_mul(0xcb1a_b31f)
+            ^ seed.wrapping_mul(0x9e37_79b9),
+    )
 }
 fn unit(h: u32) -> f32 {
     (h >> 8) as f32 / 16_777_216.0
@@ -68,7 +73,12 @@ fn perlin(p: [f32; 3], period: i32, seed: u32) -> f32 {
     let mut acc = [0.0f32; 8];
     for (i, a) in acc.iter_mut().enumerate() {
         let o = [(i & 1) as i32, ((i >> 1) & 1) as i32, ((i >> 2) & 1) as i32];
-        let h = h3((c[0] + o[0]).rem_euclid(period), (c[1] + o[1]).rem_euclid(period), (c[2] + o[2]).rem_euclid(period), seed);
+        let h = h3(
+            (c[0] + o[0]).rem_euclid(period),
+            (c[1] + o[1]).rem_euclid(period),
+            (c[2] + o[2]).rem_euclid(period),
+            seed,
+        );
         *a = grad(h, [f[0] - o[0] as f32, f[1] - o[1] as f32, f[2] - o[2] as f32]);
     }
     let l = |a: f32, b: f32, t: f32| a + (b - a) * t;

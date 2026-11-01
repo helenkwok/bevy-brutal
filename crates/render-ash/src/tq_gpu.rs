@@ -44,7 +44,11 @@ impl AshBackend {
         if blobs.is_empty() {
             return Ok(GpuTqDecode::default());
         }
-        let views: Vec<TqView<'_>> = blobs.iter().map(|b| TqView::parse(b)).collect::<Result<_, _>>().map_err(|_| BackendError::BadConfig("TQ blob failed verification"))?;
+        let views: Vec<TqView<'_>> = blobs
+            .iter()
+            .map(|b| TqView::parse(b))
+            .collect::<Result<_, _>>()
+            .map_err(|_| BackendError::BadConfig("TQ blob failed verification"))?;
         let v0 = &views[0];
         if views.iter().any(|v| v.bits != v0.bits || v.samples != v0.samples || v.words.len() != v0.words.len()) {
             return Err(BackendError::BadConfig("TQ blobs differ in bits/shape"));
@@ -78,18 +82,31 @@ impl AshBackend {
             samples: v0.samples,
             bits: v0.bits,
         };
-        let range = [vk::PushConstantRange { stage_flags: vk::ShaderStageFlags::COMPUTE, offset: 0, size: size_of::<TqPushGpu>() as u32 }];
+        let range = [vk::PushConstantRange {
+            stage_flags: vk::ShaderStageFlags::COMPUTE,
+            offset: 0,
+            size: size_of::<TqPushGpu>() as u32,
+        }];
         // SAFETY: device valid; create infos reference live data; module destroyed after creation.
         let (layout, pipe, qp) = unsafe {
-            let layout = d.create_pipeline_layout(&vk::PipelineLayoutCreateInfo::default().push_constant_ranges(&range), None)?;
+            let layout =
+                d.create_pipeline_layout(&vk::PipelineLayoutCreateInfo::default().push_constant_ranges(&range), None)?;
             let m = shader_module(&d, TQ_DECODE_SPV)?;
             let info = [vk::ComputePipelineCreateInfo::default()
-                .stage(vk::PipelineShaderStageCreateInfo::default().stage(vk::ShaderStageFlags::COMPUTE).module(m).name(c"main"))
+                .stage(
+                    vk::PipelineShaderStageCreateInfo::default()
+                        .stage(vk::ShaderStageFlags::COMPUTE)
+                        .module(m)
+                        .name(c"main"),
+                )
                 .layout(layout)];
             let ps = d.create_compute_pipelines(vk::PipelineCache::null(), &info, None).map_err(|(_, e)| e);
             d.destroy_shader_module(m, None);
             let ps = ps?;
-            let qp = d.create_query_pool(&vk::QueryPoolCreateInfo::default().query_type(vk::QueryType::TIMESTAMP).query_count(2), None)?;
+            let qp = d.create_query_pool(
+                &vk::QueryPoolCreateInfo::default().query_type(vk::QueryType::TIMESTAMP).query_count(2),
+                None,
+            )?;
             (layout, ps[0], qp)
         };
         use vk::AccessFlags2 as A;
@@ -112,7 +129,14 @@ impl AshBackend {
                 Some(period) => {
                     let mut t = [0u64; 2];
                     // SAFETY: the submit completed and wrote both queries.
-                    unsafe { d.get_query_pool_results(qp, 0, &mut t, vk::QueryResultFlags::TYPE_64 | vk::QueryResultFlags::WAIT)? };
+                    unsafe {
+                        d.get_query_pool_results(
+                            qp,
+                            0,
+                            &mut t,
+                            vk::QueryResultFlags::TYPE_64 | vk::QueryResultFlags::WAIT,
+                        )?
+                    };
                     Some(t[1].saturating_sub(t[0]) as f64 * period as f64 / 1e6)
                 }
                 None => None,

@@ -22,20 +22,43 @@ fn pack() -> PlanetPack {
 
 /// `cloud`: the aux map's r = the cloud map's uniform coverage.
 fn pack_with_clouds(cloud: f32) -> PlanetPack {
-    let albedo = bake_cube("albedo", TexFormat::Bc7Srgb, 32, 1, &|d: DVec3| [0.25, 0.25, 0.25, if d.z < 0.0 { 1.0 } else { 0.0 }]);
+    let albedo = bake_cube("albedo", TexFormat::Bc7Srgb, 32, 1, &|d: DVec3| {
+        [0.25, 0.25, 0.25, if d.z < 0.0 { 1.0 } else { 0.0 }]
+    });
     let slope = bake_cube("slope", TexFormat::Bc5, 32, 1, &|_| [0.5, 0.5, 0.0, 1.0]);
     let night = bake_cube("night", TexFormat::Bc4, 32, 1, &|_| [0.5, 0.0, 0.0, 1.0]);
     let aux = bake_cube("aux", TexFormat::Bc7, 32, 1, &|_| [cloud, 0.0, 0.5, 1.0]);
-    PlanetPack { textures: vec![albedo, slope, night, aux], height: HeightCube { size: 8, texels: vec![0; 6 * 64], scale: 0.1, offset: 0.0 }, credits: "test".into() }
+    PlanetPack {
+        textures: vec![albedo, slope, night, aux],
+        height: HeightCube { size: 8, texels: vec![0; 6 * 64], scale: 0.1, offset: 0.0 },
+        credits: "test".into(),
+    }
 }
 
 /// Camera at `alt_km` above (0, 0) looking at the planet centre; sun along `sun`. 96x96, fov 40.
-fn render(be: &mut AshBackend, tex: &PlanetTextures, pk: &PlanetPack, alt_km: f64, sun: DVec3, exposure: f32, night: f32) -> Vec<[f32; 4]> {
+fn render(
+    be: &mut AshBackend,
+    tex: &PlanetTextures,
+    pk: &PlanetPack,
+    alt_km: f64,
+    sun: DVec3,
+    exposure: f32,
+    night: f32,
+) -> Vec<[f32; 4]> {
     render_with(be, tex, pk, alt_km, sun, exposure, night, &|_| {})
 }
 
 #[allow(clippy::too_many_arguments)]
-fn render_with(be: &mut AshBackend, tex: &PlanetTextures, pk: &PlanetPack, alt_km: f64, sun: DVec3, exposure: f32, night: f32, edit: &dyn Fn(&mut PlanetParamsGpu)) -> Vec<[f32; 4]> {
+fn render_with(
+    be: &mut AshBackend,
+    tex: &PlanetTextures,
+    pk: &PlanetPack,
+    alt_km: f64,
+    sun: DVec3,
+    exposure: f32,
+    night: f32,
+    edit: &dyn Fn(&mut PlanetParamsGpu),
+) -> Vec<[f32; 4]> {
     let n = 96u32;
     let fov = 40f64.to_radians();
     let cam = DVec3::X * (R + alt_km * 1000.0);
@@ -46,7 +69,14 @@ fn render_with(be: &mut AshBackend, tex: &PlanetTextures, pk: &PlanetPack, alt_k
         let l = v.length();
         glam::DVec4::new(v.x / l, v.y / l, v.z / l, w / l)
     };
-    let planes = [pl(right + fwd * t, 0.0), pl(-right + fwd * t, 0.0), pl(up + fwd * t, 0.0), pl(-up + fwd * t, 0.0), pl(fwd, -1.0), pl(-fwd, 1e12)];
+    let planes = [
+        pl(right + fwd * t, 0.0),
+        pl(-right + fwd * t, 0.0),
+        pl(up + fwd * t, 0.0),
+        pl(-up + fwd * t, 0.0),
+        pl(fwd, -1.0),
+        pl(-fwd, 1e12),
+    ];
     let view = View { cam, planes, px_per_rad: n as f64 / (2.0 * t), max_error_px: 1.0, max_level: 10 };
     let sel = quadtree::select(&view, &Shape { radius: R, h_min: 0.0, h_max: 0.0 });
     assert!(sel.visible.len() > 1, "need several patches to exercise per-patch origins");
@@ -102,7 +132,10 @@ fn render_with(be: &mut AshBackend, tex: &PlanetTextures, pk: &PlanetPack, alt_k
 
 #[test]
 fn planet_renders_round_nan_free_and_resolves_night_radiance() {
-    let mut be = match AshBackend::new(BackendConfig { max_instances: 16, extent: (64, 64), validation: true, ..Default::default() }, None) {
+    let mut be = match AshBackend::new(
+        BackendConfig { max_instances: 16, extent: (64, 64), validation: true, ..Default::default() },
+        None,
+    ) {
         Ok(b) => b,
         Err(e) => {
             eprintln!("SKIP: no usable Vulkan 1.3 device: {e:?}");
@@ -125,7 +158,11 @@ fn planet_renders_round_nan_free_and_resolves_night_radiance() {
     let expect = std::f64::consts::PI * r_px * r_px;
     assert!((area / expect - 1.0).abs() < 0.04, "disk area {area} vs {expect:.0} px");
     let c = n as f64 / 2.0;
-    let quads = [0usize, 1, 2, 3].map(|q| disk.iter().filter(|(x, y)| ((*x as f64 + 0.5 > c) as usize) + 2 * ((*y as f64 + 0.5 > c) as usize) == q).count() as f64);
+    let quads = [0usize, 1, 2, 3].map(|q| {
+        disk.iter()
+            .filter(|(x, y)| ((*x as f64 + 0.5 > c) as usize) + 2 * ((*y as f64 + 0.5 > c) as usize) == q)
+            .count() as f64
+    });
     for q in quads {
         assert!((q / (area / 4.0) - 1.0).abs() < 0.03, "disk quadrants unbalanced: {quads:?}");
     }
@@ -141,7 +178,10 @@ fn planet_renders_round_nan_free_and_resolves_night_radiance() {
     let got = [p[0] / exposure, p[1] / exposure, p[2] / exposure];
     assert!(got[0] > 0.7 * city && got[0] < 1.1 * city, "night radiance {got:?} vs city {city:.3e}");
     let (rg, rb) = (got[1] / got[0], got[2] / got[0]);
-    assert!((rg / 0.72 - 1.0).abs() < 0.1 && (rb / 0.42 - 1.0).abs() < 0.25, "city colour ratios lost: g/r {rg:.3} b/r {rb:.3}");
+    assert!(
+        (rg / 0.72 - 1.0).abs() < 0.1 && (rb / 0.42 - 1.0).abs() < 0.25,
+        "city colour ratios lost: g/r {rg:.3} b/r {rb:.3}"
+    );
 
     be.planet_free(tex);
     let (e1, _) = message_counts();
@@ -158,7 +198,10 @@ fn planet_renders_round_nan_free_and_resolves_night_radiance() {
 ///   while all-zero `meso` stays bit-identical to round 2.
 #[test]
 fn cloud_window_clears_and_far_deck_gets_structure() {
-    let mut be = match AshBackend::new(BackendConfig { max_instances: 16, extent: (64, 64), validation: true, ..Default::default() }, None) {
+    let mut be = match AshBackend::new(
+        BackendConfig { max_instances: 16, extent: (64, 64), validation: true, ..Default::default() },
+        None,
+    ) {
         Ok(b) => b,
         Err(e) => {
             eprintln!("SKIP: no usable Vulkan 1.3 device: {e:?}");

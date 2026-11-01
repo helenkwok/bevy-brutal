@@ -201,7 +201,8 @@ impl PlanetPack {
         if size == 0 || hb.len() != 6 * size as usize * size as usize * 2 {
             return Err(bad(21));
         }
-        let height = HeightCube { size, texels: bytemuck::pod_collect_to_vec(hb), scale: h.f64(2, 1.0), offset: h.f64(3, 0.0) };
+        let height =
+            HeightCube { size, texels: bytemuck::pod_collect_to_vec(hb), scale: h.f64(2, 1.0), offset: h.f64(3, 0.0) };
         let credits = v.bytes(&root, 3, 1, 1)?.map(|b| String::from_utf8_lossy(b).into_owned()).unwrap_or_default();
         Ok(PlanetPack { textures, height, credits })
     }

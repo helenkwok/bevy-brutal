@@ -44,7 +44,9 @@ impl SubgroupInfo {
     /// Subgroup arithmetic (WavePrefixSum / WaveActiveSum) + ballot/basic usable in compute shaders.
     pub fn compute_arithmetic(&self) -> bool {
         self.supported_stages.contains(vk::ShaderStageFlags::COMPUTE)
-            && self.supported_operations.contains(vk::SubgroupFeatureFlags::BASIC | vk::SubgroupFeatureFlags::ARITHMETIC)
+            && self
+                .supported_operations
+                .contains(vk::SubgroupFeatureFlags::BASIC | vk::SubgroupFeatureFlags::ARITHMETIC)
     }
 }
 
@@ -101,7 +103,10 @@ impl VkContext {
             exts.push(ash::ext::debug_utils::NAME.as_ptr());
             // SAFETY: entry is valid; `layer` is a NUL-terminated layer name.
             let layer_exts = unsafe { entry.enumerate_instance_extension_properties(Some(layer))? };
-            if layer_exts.iter().any(|e| e.extension_name_as_c_str().is_ok_and(|n| n == ash::ext::validation_features::NAME)) {
+            if layer_exts
+                .iter()
+                .any(|e| e.extension_name_as_c_str().is_ok_and(|n| n == ash::ext::validation_features::NAME))
+            {
                 exts.push(ash::ext::validation_features::NAME.as_ptr());
                 sync_validation = true;
             }
@@ -122,7 +127,9 @@ impl VkContext {
         let debug = if validation {
             let loader = ash::ext::debug_utils::Instance::new(&entry, &instance);
             let mci = vk::DebugUtilsMessengerCreateInfoEXT::default()
-                .message_severity(vk::DebugUtilsMessageSeverityFlagsEXT::ERROR | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING)
+                .message_severity(
+                    vk::DebugUtilsMessageSeverityFlagsEXT::ERROR | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING,
+                )
                 .message_type(
                     vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
                         | vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION
@@ -137,7 +144,9 @@ impl VkContext {
         };
 
         // Partially-built context so early returns clean up via Drop-like helper.
-        let fail = |instance: &ash::Instance, debug: &Option<(ash::ext::debug_utils::Instance, vk::DebugUtilsMessengerEXT)>, surface: &Option<Surface>| {
+        let fail = |instance: &ash::Instance,
+                    debug: &Option<(ash::ext::debug_utils::Instance, vk::DebugUtilsMessengerEXT)>,
+                    surface: &Option<Surface>| {
             // SAFETY: no device exists yet; children (messenger, surface) are destroyed before the instance.
             unsafe {
                 if let Some(s) = surface {
@@ -172,7 +181,8 @@ impl VkContext {
 
         let prio = [1.0f32];
         let qci = [vk::DeviceQueueCreateInfo::default().queue_family_index(queue_family).queue_priorities(&prio)];
-        let dev_exts: Vec<*const c_char> = if surface.is_some() { vec![ash::khr::swapchain::NAME.as_ptr()] } else { vec![] };
+        let dev_exts: Vec<*const c_char> =
+            if surface.is_some() { vec![ash::khr::swapchain::NAME.as_ptr()] } else { vec![] };
         // Optional features: subgroup size control / full compute subgroups (used by the subgroup scan).
         let (size_control, full_subgroups) = {
             let mut q13 = vk::PhysicalDeviceVulkan13Features::default();
@@ -199,7 +209,10 @@ impl VkContext {
         let core = unsafe { instance.get_physical_device_features(physical_device) };
         let (texture_bc, anisotropy) = (core.texture_compression_bc == vk::TRUE, core.sampler_anisotropy == vk::TRUE);
         let mut f2 = vk::PhysicalDeviceFeatures2::default().features(
-            vk::PhysicalDeviceFeatures::default().multi_draw_indirect(true).texture_compression_bc(texture_bc).sampler_anisotropy(anisotropy),
+            vk::PhysicalDeviceFeatures::default()
+                .multi_draw_indirect(true)
+                .texture_compression_bc(texture_bc)
+                .sampler_anisotropy(anisotropy),
         );
         let dci = vk::DeviceCreateInfo::default()
             .queue_create_infos(&qci)
@@ -308,7 +321,8 @@ impl VkContext {
                 q.queue_flags.contains(vk::QueueFlags::GRAPHICS | vk::QueueFlags::COMPUTE)
                     && surface.is_none_or(|s| {
                         // SAFETY: pd, queue index and surface are valid handles from this instance.
-                        unsafe { s.loader.get_physical_device_surface_support(pd, i as u32, s.surface) }.unwrap_or(false)
+                        unsafe { s.loader.get_physical_device_surface_support(pd, i as u32, s.surface) }
+                            .unwrap_or(false)
                     })
             }) else {
                 continue;
@@ -340,7 +354,10 @@ impl VkContext {
             let cmd = d.allocate_command_buffers(
                 &vk::CommandBufferAllocateInfo::default().command_pool(pool).command_buffer_count(1),
             )?[0];
-            d.begin_command_buffer(cmd, &vk::CommandBufferBeginInfo::default().flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT))?;
+            d.begin_command_buffer(
+                cmd,
+                &vk::CommandBufferBeginInfo::default().flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
+            )?;
             record(cmd);
             d.end_command_buffer(cmd)?;
             let fence = d.create_fence(&vk::FenceCreateInfo::default(), None)?;
@@ -514,7 +531,13 @@ impl GpuImage {
 }
 
 pub fn subresource(aspect: vk::ImageAspectFlags) -> vk::ImageSubresourceRange {
-    vk::ImageSubresourceRange { aspect_mask: aspect, base_mip_level: 0, level_count: 1, base_array_layer: 0, layer_count: 1 }
+    vk::ImageSubresourceRange {
+        aspect_mask: aspect,
+        base_mip_level: 0,
+        level_count: 1,
+        base_array_layer: 0,
+        layer_count: 1,
+    }
 }
 
 /// Record a global memory barrier (sync2).
@@ -524,7 +547,11 @@ pub fn memory_barrier(
     src: (vk::PipelineStageFlags2, vk::AccessFlags2),
     dst: (vk::PipelineStageFlags2, vk::AccessFlags2),
 ) {
-    let b = [vk::MemoryBarrier2::default().src_stage_mask(src.0).src_access_mask(src.1).dst_stage_mask(dst.0).dst_access_mask(dst.1)];
+    let b = [vk::MemoryBarrier2::default()
+        .src_stage_mask(src.0)
+        .src_access_mask(src.1)
+        .dst_stage_mask(dst.0)
+        .dst_access_mask(dst.1)];
     // SAFETY: cmd is in the recording state (callers only use this between begin/end).
     unsafe { d.cmd_pipeline_barrier2(cmd, &vk::DependencyInfo::default().memory_barriers(&b)) };
 }

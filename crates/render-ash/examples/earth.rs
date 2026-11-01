@@ -66,34 +66,138 @@ struct Shot {
 fn shots() -> Vec<Shot> {
     vec![
         // ~35,000 km, full disk: Africa, Europe, the Atlantic; mid-July sun ~13 deg off the view axis
-        Shot { name: "E2_orbit_day", lat: 8.0, lon: 18.0, alt_km: 35_000.0, heading: 0.0, pitch: -90.0, fov_y: 20.5, sun_lat: 21.0, sun_lon: 9.0, exposure: 2.4, night_gain: 1.5e-6, gmst: 40.0 },
+        Shot {
+            name: "E2_orbit_day",
+            lat: 8.0,
+            lon: 18.0,
+            alt_km: 35_000.0,
+            heading: 0.0,
+            pitch: -90.0,
+            fov_y: 20.5,
+            sun_lat: 21.0,
+            sun_lon: 9.0,
+            exposure: 2.4,
+            night_gain: 1.5e-6,
+            gmst: 40.0,
+        },
         // the exact DSCOVR EPIC geometry of the reference frame epic_1b_20260715111224
         // (2026-07-15 11:07:35 UTC, EPIC API J2000 vectors): sub-spacecraft point 13.39 N 22.51 E,
         // 1,481,554 km from the centre, subsolar point 21.54 N 14.22 E; fov matches the 853 px
         // disc of the 1080 px reference JPG. North up like EPIC's natural-colour product
-        Shot { name: "E2_vs_epic", lat: 13.389, lon: 22.513, alt_km: 1_475_183.0, heading: 0.0, pitch: -90.0, fov_y: 0.6239, sun_lat: 21.537, sun_lon: 14.219, exposure: 2.4, night_gain: 1.5e-6, gmst: 100.2 },
+        Shot {
+            name: "E2_vs_epic",
+            lat: 13.389,
+            lon: 22.513,
+            alt_km: 1_475_183.0,
+            heading: 0.0,
+            pitch: -90.0,
+            fov_y: 0.6239,
+            sun_lat: 21.537,
+            sun_lon: 14.219,
+            exposure: 2.4,
+            night_gain: 1.5e-6,
+            gmst: 100.2,
+        },
         // 120 km over the western Alps looking east along the main chain at mid-morning: the
         // footprint (~0.2-0.6 km) is far below the 2.4 km texels, so the procedural sub-texel
         // detail carries the ground (the first leg of the descent toward the mountains scene)
-        Shot { name: "E2_low_alps", lat: 45.6, lon: 6.0, alt_km: 120.0, heading: 70.0, pitch: -38.0, fov_y: 50.0, sun_lat: 21.5, sun_lon: -20.0, exposure: 2.6, night_gain: 1.5e-6, gmst: 0.0 },
+        Shot {
+            name: "E2_low_alps",
+            lat: 45.6,
+            lon: 6.0,
+            alt_km: 120.0,
+            heading: 70.0,
+            pitch: -38.0,
+            fov_y: 50.0,
+            sun_lat: 21.5,
+            sun_lon: -20.0,
+            exposure: 2.6,
+            night_gain: 1.5e-6,
+            gmst: 0.0,
+        },
         // ISS, 410 km over the eastern Atlantic looking north-east to Iberia / the Mediterranean
-        Shot { name: "E2_orbit_iss", lat: 29.0, lon: -21.0, alt_km: 410.0, heading: 48.0, pitch: -27.0, fov_y: 52.0, sun_lat: 21.0, sun_lon: -45.0, exposure: 2.6, night_gain: 1.5e-6, gmst: 0.0 },
+        Shot {
+            name: "E2_orbit_iss",
+            lat: 29.0,
+            lon: -21.0,
+            alt_km: 410.0,
+            heading: 48.0,
+            pitch: -27.0,
+            fov_y: 52.0,
+            sun_lat: 21.0,
+            sun_lon: -45.0,
+            exposure: 2.6,
+            night_gain: 1.5e-6,
+            gmst: 0.0,
+        },
         // night over Italy, looking WNW along the dark limb: the sun is 27 deg below the camera's
         // horizontal (full night, cities below) and 55 deg left of the view, ~6.6 deg below the
         // horizon at the limb in its direction, so the twilight arc glows at the left end and
         // fades along the limb; the thin green airglow line runs above the dark limb; stars
-        Shot { name: "E2_terminator", lat: 43.0, lon: 12.0, alt_km: 420.0, heading: 285.0, pitch: -10.0, fov_y: 60.0, sun_lat: -46.76, sun_lon: -73.10, exposure: 2.0e5, night_gain: 1.5e-6, gmst: 200.0 },
+        Shot {
+            name: "E2_terminator",
+            lat: 43.0,
+            lon: 12.0,
+            alt_km: 420.0,
+            heading: 285.0,
+            pitch: -10.0,
+            fov_y: 60.0,
+            sun_lat: -46.76,
+            sun_lon: -73.10,
+            exposure: 2.0e5,
+            night_gain: 1.5e-6,
+            gmst: 200.0,
+        },
         // the same camera, telephoto (6 deg) on the limb straight toward the sun, which is ~3.6
         // deg below the horizon at the limb's tangent point: the layered sunset line (red-orange
         // troposphere with cloud silhouettes, yellow-white, the blue ozone/Rayleigh layer, dark)
-        Shot { name: "E2_sunset", lat: 43.0, lon: 12.0, alt_km: 420.0, heading: 285.0, pitch: -19.4, fov_y: 6.0, sun_lat: -6.00, sun_lon: -105.47, exposure: 200.0, night_gain: 1.5e-6, gmst: 200.0 },
+        Shot {
+            name: "E2_sunset",
+            lat: 43.0,
+            lon: 12.0,
+            alt_km: 420.0,
+            heading: 285.0,
+            pitch: -19.4,
+            fov_y: 6.0,
+            sun_lat: -6.00,
+            sun_lon: -105.47,
+            exposure: 200.0,
+            night_gain: 1.5e-6,
+            gmst: 200.0,
+        },
         // ISS over the Sahel at 16:30 local: the mesoscale convective systems of the dated VIIRS
         // map near 13 N 1 W (tops > 12 km), ~750 km ahead (24.5 deg below the horizontal), sun
         // 25 deg up in the WNW: side-lit towers casting shadows east
-        Shot { name: "E2_iss_convection", lat: 7.0, lon: -5.5, alt_km: 410.0, heading: 32.0, pitch: -22.0, fov_y: 52.0, sun_lat: 21.5, sun_lon: -68.5, exposure: 2.4, night_gain: 1.5e-6, gmst: 0.0 },
+        Shot {
+            name: "E2_iss_convection",
+            lat: 7.0,
+            lon: -5.5,
+            alt_km: 410.0,
+            heading: 32.0,
+            pitch: -22.0,
+            fov_y: 52.0,
+            sun_lat: 21.5,
+            sun_lon: -68.5,
+            exposure: 2.4,
+            night_gain: 1.5e-6,
+            gmst: 0.0,
+        },
         // ocean sun glint: morning sun 35 deg up in the east, specular point on Maui (20.9 N,
         // 156.7 W) 535 km ahead, 39.8 deg below the horizontal -> the islands sit in the glint
-        Shot { name: "E2_glint", lat: 20.8, lon: -161.8, alt_km: 420.0, heading: 88.0, pitch: -32.0, fov_y: 50.0, sun_lat: 11.94, sun_lon: -99.83, exposure: 2.6, night_gain: 1.5e-6, gmst: 0.0 },
+        Shot {
+            name: "E2_glint",
+            lat: 20.8,
+            lon: -161.8,
+            alt_km: 420.0,
+            heading: 88.0,
+            pitch: -32.0,
+            fov_y: 50.0,
+            sun_lat: 11.94,
+            sun_lon: -99.83,
+            exposure: 2.6,
+            night_gain: 1.5e-6,
+            gmst: 0.0,
+        },
     ]
 }
 
@@ -154,7 +258,11 @@ fn load_stars(path: &Path, gmst_deg: f64) -> Vec<Star> {
     let mut out = Vec::new();
     for l in txt.split(|&b| b == b'\n') {
         let f = |a: usize, b: usize| -> Option<f64> { std::str::from_utf8(l.get(a - 1..b)?).ok()?.trim().parse().ok() };
-        let (Some(rh), Some(rm), Some(rs), Some(dd), Some(dm), Some(ds), Some(v)) = (f(76, 77), f(78, 79), f(80, 83), f(85, 86), f(87, 88), f(89, 90), f(103, 107)) else { continue };
+        let (Some(rh), Some(rm), Some(rs), Some(dd), Some(dm), Some(ds), Some(v)) =
+            (f(76, 77), f(78, 79), f(80, 83), f(85, 86), f(87, 88), f(89, 90), f(103, 107))
+        else {
+            continue;
+        };
         let sign = if l.get(83) == Some(&b'-') { -1.0 } else { 1.0 };
         let ra = (rh + rm / 60.0 + rs / 3600.0) * 15.0 - gmst_deg;
         let dec = sign * (dd + dm / 60.0 + ds / 3600.0);
@@ -174,7 +282,9 @@ fn main() {
     let shot = arg("--shot").unwrap_or("all".into());
     let pack_path = PathBuf::from(arg("--pack").unwrap_or("/workspace/data/earth/earth.pln".into()));
     let out = PathBuf::from(arg("--out").unwrap_or("out/quality/earth".into()));
-    let (w, h) = arg("--size").and_then(|s| s.split_once('x').map(|(a, b)| (a.parse().unwrap(), b.parse().unwrap()))).unwrap_or((1920u32, 1080u32));
+    let (w, h) = arg("--size")
+        .and_then(|s| s.split_once('x').map(|(a, b)| (a.parse().unwrap(), b.parse().unwrap())))
+        .unwrap_or((1920u32, 1080u32));
     let ss: u32 = arg("--ss").and_then(|s| s.parse().ok()).unwrap_or(2);
     let env = |k: &str| std::env::var(k).ok().and_then(|v| v.parse::<f64>().ok());
     std::fs::create_dir_all(&out).unwrap();
@@ -186,10 +296,16 @@ fn main() {
     let cloud_mode = std::env::var("EARTH_CLOUDS").unwrap_or("vol".into());
     let data_dir = pack_path.parent().map(Path::to_path_buf).unwrap_or_default();
     let validate = std::env::var("PLANET_VALIDATE").map(|v| v != "0").unwrap_or(true);
-    let mut be = AshBackend::new(render_ash::BackendConfig { max_instances: 16, validation: validate, ..Default::default() }, None).expect("vulkan");
+    let mut be = AshBackend::new(
+        render_ash::BackendConfig { max_instances: 16, validation: validate, ..Default::default() },
+        None,
+    )
+    .expect("vulkan");
     let t0 = Instant::now();
     let (tex, height, disk_bytes, read_ms, parse_ms) = if mode == "pln" {
-        let bytes = std::fs::read(&pack_path).unwrap_or_else(|e| panic!("{}: {e} (tools/fetch_earth_data.sh, then the earth_bake example)", pack_path.display()));
+        let bytes = std::fs::read(&pack_path).unwrap_or_else(|e| {
+            panic!("{}: {e} (tools/fetch_earth_data.sh, then the earth_bake example)", pack_path.display())
+        });
         let read_ms = t0.elapsed().as_secs_f64() * 1e3;
         let disk = bytes.len() as u64;
         let pack = PlanetPack::from_bytes(&bytes).expect("verified PLN1 pack");
@@ -202,7 +318,10 @@ fn main() {
             "nosc" => "ktx2_nosc",
             _ => "ktx2",
         }));
-        let read = |n: &str| std::fs::read(dir.join(format!("{n}.ktx2"))).unwrap_or_else(|e| panic!("{}/{n}.ktx2: {e} (run the earth_bake example)", dir.display()));
+        let read = |n: &str| {
+            std::fs::read(dir.join(format!("{n}.ktx2")))
+                .unwrap_or_else(|e| panic!("{}/{n}.ktx2: {e} (run the earth_bake example)", dir.display()))
+        };
         let files: Vec<Vec<u8>> = planet::bake::KTX2_FILES.iter().map(|n| read(n)).collect();
         let hbytes = read("height");
         let read_ms = t0.elapsed().as_secs_f64() * 1e3;
@@ -220,11 +339,17 @@ fn main() {
         disk_bytes as f64 / 1048576.0,
         tex.bytes as f64 / 1048576.0,
         tex.decode_ms,
-        tex.images.iter().map(|(f, s, m, b)| format!("[\"{f:?}\",{s},{m},{:.1}]", *b as f64 / 1048576.0)).collect::<Vec<_>>().join(",")
+        tex.images
+            .iter()
+            .map(|(f, s, m, b)| format!("[\"{f:?}\",{s},{m},{:.1}]", *b as f64 / 1048576.0))
+            .collect::<Vec<_>>()
+            .join(",")
     );
     eprintln!("textures {tex_json}");
     let shape = Shape { radius: planet::EARTH_RADIUS_M, h_min: -500.0, h_max: 8900.0 };
-    let list3 = |k: &str| std::env::var(k).ok().map(|v| v.split(',').map(|t| t.trim().parse::<f64>().expect(k)).collect::<Vec<f64>>());
+    let list3 = |k: &str| {
+        std::env::var(k).ok().map(|v| v.split(',').map(|t| t.trim().parse::<f64>().expect(k)).collect::<Vec<f64>>())
+    };
     let cam_ecef = arg("--cam-ecef").map(|v| {
         let c: Vec<f64> = v.split(',').map(|t| t.trim().parse().expect("--cam-ecef: 9 numbers")).collect();
         assert_eq!(c.len(), 9, "--cam-ecef x,y,z,fx,fy,fz,ux,uy,uz");
@@ -257,7 +382,9 @@ fn main() {
     // terrain flattening under the descent's mountains layer (FLATTEN=lat,lon,r0_km,r1_km,h_m)
     // optional 6th value: strength 0..1 (the descent's ground weight: the terrain morphs flat as
     // the mountains layer fades in; 0 = the real terrain)
-    let flatten = list3("FLATTEN").map(|v| (latlon_dir(v[0], v[1]), v[2] / R_KM, v[3] / R_KM, v[4], v.get(5).copied().unwrap_or(1.0).clamp(0.0, 1.0)));
+    let flatten = list3("FLATTEN").map(|v| {
+        (latlon_dir(v[0], v[1]), v[2] / R_KM, v[3] / R_KM, v[4], v.get(5).copied().unwrap_or(1.0).clamp(0.0, 1.0))
+    });
     let height_at = |d: DVec3| -> f64 {
         let h = height.sample(d);
         match flatten {
@@ -274,15 +401,23 @@ fn main() {
     let graft_env = std::env::var("GRAFT").ok().map(|v| {
         let (f, k) = v.rsplit_once(',').expect("GRAFT=<file>,<strength>");
         let bytes = std::fs::read(f).unwrap_or_else(|e| panic!("{f}: {e}"));
-        (planet::graft::GraftFile::from_bytes(&bytes).expect("GRF1 graft file"), k.parse::<f64>().expect("GRAFT strength").clamp(0.0, 1.0), f.to_string())
+        (
+            planet::graft::GraftFile::from_bytes(&bytes).expect("GRF1 graft file"),
+            k.parse::<f64>().expect("GRAFT strength").clamp(0.0, 1.0),
+            f.to_string(),
+        )
     });
     let graft_ctx = graft_env.as_ref().map(|(g, k, _)| {
-        let fr = planet::descent::Frames::new(&planet::descent::Anchor { lat: g.lat, lon: g.lon, world_xz: g.world_xz });
+        let fr =
+            planet::descent::Frames::new(&planet::descent::Anchor { lat: g.lat, lon: g.lon, world_xz: g.world_xz });
         (planet::graft::GraftMap::from_frames(&fr), g.r_full_m, g.r_out_m, *k)
     });
     // Earth round 5: GROUND=<file.grd> grounds the grafted field on real elevation
     let field = match std::env::var("GROUND") {
-        Ok(f) if f != "off" => voxel::fields::Alpine::grounded(7, std::sync::Arc::new(voxel::ground::Ground::load(&f).unwrap_or_else(|e| panic!("{e}")))),
+        Ok(f) if f != "off" => voxel::fields::Alpine::grounded(
+            7,
+            std::sync::Arc::new(voxel::ground::Ground::load(&f).unwrap_or_else(|e| panic!("{e}"))),
+        ),
         _ => voxel::fields::Alpine::new(7),
     };
     let height_lvl = |d: DVec3, level: u8| -> f64 {
@@ -299,24 +434,42 @@ fn main() {
             let size = g.levels[0].size;
             let raw = std::env::var("GRAFT_TEX").is_ok_and(|v| v == "raw");
             if raw {
-                let alb: Vec<Vec<Vec<u8>>> = g.levels.iter().map(|l| render_ash::planet::rgba8_mips(l.size, &l.albedo, true)).collect();
-                let aux: Vec<Vec<Vec<u8>>> = g.levels.iter().map(|l| render_ash::planet::rgba8_mips(l.size, &l.aux, false)).collect();
+                let alb: Vec<Vec<Vec<u8>>> =
+                    g.levels.iter().map(|l| render_ash::planet::rgba8_mips(l.size, &l.albedo, true)).collect();
+                let aux: Vec<Vec<Vec<u8>>> =
+                    g.levels.iter().map(|l| render_ash::planet::rgba8_mips(l.size, &l.aux, false)).collect();
                 be.planet_set_graft(&mut tex, size, &alb, &aux).expect("upload graft");
             } else {
                 let (fa, alb) = graft_ktx2(g, gpath, "alb");
                 let (fx, aux) = graft_ktx2(g, gpath, "aux");
                 be.planet_set_graft_fmt(&mut tex, size, (fa, &alb), (fx, &aux)).expect("upload graft (BC7)");
             }
-            eprintln!("graft: {} levels {size}^2, {} {:.1} MB, {:.0} ms, strength {k:.4}", g.levels.len(), if raw { "RGBA8" } else { "BC7" }, tex.graft_bytes as f64 / 1048576.0, tg.elapsed().as_secs_f64() * 1e3);
+            eprintln!(
+                "graft: {} levels {size}^2, {} {:.1} MB, {:.0} ms, strength {k:.4}",
+                g.levels.len(),
+                if raw { "RGBA8" } else { "BC7" },
+                tex.graft_bytes as f64 / 1048576.0,
+                tg.elapsed().as_secs_f64() * 1e3
+            );
             let (c, e, n) = (map.centre * *k, map.east, map.north);
             Some([
                 [c.x as f32, c.y as f32, c.z as f32, (*r0 / planet::EARTH_RADIUS_M) as f32],
                 [e.x as f32, e.y as f32, e.z as f32, (*r1 / planet::EARTH_RADIUS_M) as f32],
                 [n.x as f32, n.y as f32, n.z as f32, (g.levels[0].half_m / 1000.0) as f32],
-                [(g.levels[1].half_m / 1000.0) as f32, env("GRAFT_ALB").unwrap_or(0.75) as f32, env("GRAFT_AO").unwrap_or(1.0) as f32, size as f32],
+                [
+                    (g.levels[1].half_m / 1000.0) as f32,
+                    env("GRAFT_ALB").unwrap_or(0.75) as f32,
+                    env("GRAFT_AO").unwrap_or(1.0) as f32,
+                    size as f32,
+                ],
                 // tint: real albedo cube mip ~20 km (4096 face: 2.4 km texels -> lod 3), graft outer
                 // level the same (83 m texels -> lod 8)
-                [env("GRAFT_TINT").unwrap_or(1.0) as f32, (env("GRAFT_TINT_KM").unwrap_or(60.0) * 1000.0 / planet::EARTH_RADIUS_M) as f32, 3.0, (20_000.0 * size as f64 / (2.0 * g.levels[0].half_m)).log2() as f32],
+                [
+                    env("GRAFT_TINT").unwrap_or(1.0) as f32,
+                    (env("GRAFT_TINT_KM").unwrap_or(60.0) * 1000.0 / planet::EARTH_RADIUS_M) as f32,
+                    3.0,
+                    (20_000.0 * size as f64 / (2.0 * g.levels[0].half_m)).log2() as f32,
+                ],
             ])
         }
         _ => None,
@@ -341,11 +494,21 @@ fn main() {
             None => camera(&s),
         };
         let tsel = Instant::now();
-        let view = View { cam: c.pos, planes: planes(&c, fov, aspect), px_per_rad: rh as f64 / (2.0 * (fov / 2.0).tan()), max_error_px: env("LOD_PX").unwrap_or(1.5) * ss as f64, max_level: 14 };
+        let view = View {
+            cam: c.pos,
+            planes: planes(&c, fov, aspect),
+            px_per_rad: rh as f64 / (2.0 * (fov / 2.0).tan()),
+            max_error_px: env("LOD_PX").unwrap_or(1.5) * ss as f64,
+            max_level: 14,
+        };
         let sel = quadtree::select(&view, &shape);
         let sel_ms = tsel.elapsed().as_secs_f64() * 1e3;
         let tb = Instant::now();
-        let meshes: Vec<patch::PatchMesh> = sel.visible.par_iter().map(|(k, _)| patch::build(k, planet::EARTH_RADIUS_M, &|d| height_lvl(d, k.level))).collect();
+        let meshes: Vec<patch::PatchMesh> = sel
+            .visible
+            .par_iter()
+            .map(|(k, _)| patch::build(k, planet::EARTH_RADIUS_M, &|d| height_lvl(d, k.level)))
+            .collect();
         let mut vertices: Vec<PVertex> = Vec::with_capacity(meshes.len() * VERTS as usize);
         let mut patches = Vec::with_capacity(meshes.len());
         for m in &meshes {
@@ -371,34 +534,81 @@ fn main() {
             right: [r.x, r.y, r.z, (ty * aspect) as f32],
             up: [u.x, u.y, u.z, ty as f32],
             fwd: [f.x, f.y, f.z, env("DEBUG").unwrap_or(0.0) as f32],
-            planet: [R_KM as f32, (R_KM + 100.0) as f32, (R_KM + env("CLOUD_KM").unwrap_or(6.0)) as f32, env("CLOUD_GAMMA").unwrap_or(1.6) as f32],
-            ocean: [(0.003 + 0.00512 * env("WIND").unwrap_or(6.0)) as f32, 0.02, 0.22, env("RELIEF").unwrap_or(1.0) as f32],
-            light: [env("NIGHT").unwrap_or(s.night_gain) as f32, env("AIRGLOW").unwrap_or(5.0e-10) as f32, env("ALBEDO").unwrap_or(0.85) as f32, env("CLOUD_SHADOW").unwrap_or(1.0) as f32],
+            planet: [
+                R_KM as f32,
+                (R_KM + 100.0) as f32,
+                (R_KM + env("CLOUD_KM").unwrap_or(6.0)) as f32,
+                env("CLOUD_GAMMA").unwrap_or(1.6) as f32,
+            ],
+            ocean: [
+                (0.003 + 0.00512 * env("WIND").unwrap_or(6.0)) as f32,
+                0.02,
+                0.22,
+                env("RELIEF").unwrap_or(1.0) as f32,
+            ],
+            light: [
+                env("NIGHT").unwrap_or(s.night_gain) as f32,
+                env("AIRGLOW").unwrap_or(5.0e-10) as f32,
+                env("ALBEDO").unwrap_or(0.85) as f32,
+                env("CLOUD_SHADOW").unwrap_or(1.0) as f32,
+            ],
             atmo: [env("MIE").unwrap_or(1.0) as f32, 1.0, 1.0, env("GROUND_ALB").unwrap_or(0.15) as f32],
             view: [rw as f32, rh as f32, s.exposure as f32, 0.0],
-            cloud: [env("CLOUD_BASE").unwrap_or(1.0) as f32, env("CLOUD_TOP").unwrap_or(9.0) as f32, env("CLOUD_EXT").unwrap_or(24.0) as f32, if cloud_mode == "2d" { 0.0 } else { 1.0 }],
-            cloud2: [env("CLOUD_STEPS").unwrap_or(48.0) as f32, env("CLOUD_SUN_STEPS").unwrap_or(6.0) as f32, env("CLOUD_NOISE_KM").unwrap_or(10.0) as f32, env("CLOUD_MS").unwrap_or(2.5) as f32],
-            aero: [env("AERO_FT").unwrap_or(6.0e-3) as f32, env("AERO_H").unwrap_or(3.0) as f32, env("AERO_STRAT").unwrap_or(4.0e-4) as f32, env("EARTH_DETAIL").unwrap_or(1.0) as f32],
+            cloud: [
+                env("CLOUD_BASE").unwrap_or(1.0) as f32,
+                env("CLOUD_TOP").unwrap_or(9.0) as f32,
+                env("CLOUD_EXT").unwrap_or(24.0) as f32,
+                if cloud_mode == "2d" { 0.0 } else { 1.0 },
+            ],
+            cloud2: [
+                env("CLOUD_STEPS").unwrap_or(48.0) as f32,
+                env("CLOUD_SUN_STEPS").unwrap_or(6.0) as f32,
+                env("CLOUD_NOISE_KM").unwrap_or(10.0) as f32,
+                env("CLOUD_MS").unwrap_or(2.5) as f32,
+            ],
+            aero: [
+                env("AERO_FT").unwrap_or(6.0e-3) as f32,
+                env("AERO_H").unwrap_or(3.0) as f32,
+                env("AERO_STRAT").unwrap_or(4.0e-4) as f32,
+                env("EARTH_DETAIL").unwrap_or(1.0) as f32,
+            ],
             hole,
             // far-footprint cloud structure (round 3; MESO_TOP=0 MESO_AMP=0 MESO_BIAS=0 MESO_FINE=0 MESO_GAMMA=0 = round 2)
-            meso: [env("MESO_TOP").unwrap_or(2.0) as f32, env("MESO_AMP").unwrap_or(4.5) as f32, env("MESO_BIAS").unwrap_or(-0.8) as f32, env("MESO_FINE").unwrap_or(1.0) as f32],
+            meso: [
+                env("MESO_TOP").unwrap_or(2.0) as f32,
+                env("MESO_AMP").unwrap_or(4.5) as f32,
+                env("MESO_BIAS").unwrap_or(-0.8) as f32,
+                env("MESO_FINE").unwrap_or(1.0) as f32,
+            ],
             // round 4 (EPIC cloud fraction): far coverage gamma; MESO_GAMMA=0 MESO_FINE=0
             // MESO_BIAS=-0.7 = round 3
             meso2: [env("MESO_GAMMA").unwrap_or(0.9) as f32, 0.0, 0.0, 0.0],
-            thaw: flatten.map_or([0.0; 4], |(c, _, a1, _, k)| [(c.x * k) as f32, (c.y * k) as f32, (c.z * k) as f32, a1 as f32]),
+            thaw: flatten
+                .map_or([0.0; 4], |(c, _, a1, _, k)| [(c.x * k) as f32, (c.y * k) as f32, (c.z * k) as f32, a1 as f32]),
             graft: graft_params.map_or([0.0; 4], |g| g[0]),
             graft_e: graft_params.map_or([0.0; 4], |g| g[1]),
             graft_n: graft_params.map_or([0.0; 4], |g| g[2]),
             graft_l: graft_params.map_or([0.0; 4], |g| g[3]),
             graft_t: graft_params.map_or([0.0; 4], |g| g[4]),
             // round 6: marine haze over open ocean (OCEAN_HAZE=0 = round 5)
-            haze: [env("OCEAN_HAZE").unwrap_or(0.15) as f32, env("HAZE_ANGSTROM").unwrap_or(0.4) as f32, env("HAZE_SSA").unwrap_or(0.98) as f32, env("HAZE_MASK_KM").unwrap_or(150.0) as f32],
+            haze: [
+                env("OCEAN_HAZE").unwrap_or(0.15) as f32,
+                env("HAZE_ANGSTROM").unwrap_or(0.4) as f32,
+                env("HAZE_SSA").unwrap_or(0.98) as f32,
+                env("HAZE_MASK_KM").unwrap_or(150.0) as f32,
+            ],
             // round 7: cloud-edge feather (km, mix), clear-window edge noise, haze dust
             // (CLOUD_FEATHER=0 HOLE_NOISE=0 HAZE_DUST=0 = round 6)
-            cloud3: [env("CLOUD_FEATHER").unwrap_or(16.0) as f32, env("CLOUD_FEATHER_MIX").unwrap_or(0.6) as f32, env("HOLE_NOISE").unwrap_or(0.35) as f32, env("HAZE_DUST").unwrap_or(0.0) as f32],
+            cloud3: [
+                env("CLOUD_FEATHER").unwrap_or(16.0) as f32,
+                env("CLOUD_FEATHER_MIX").unwrap_or(0.6) as f32,
+                env("HOLE_NOISE").unwrap_or(0.35) as f32,
+                env("HAZE_DUST").unwrap_or(0.0) as f32,
+            ],
         };
         let (haze, cloud3) = (p.haze, p.cloud3);
-        let frame = PlanetFrame { width: rw, height: rh, params: p, patches: &patches, masks: &masks, vertices: &vertices };
+        let frame =
+            PlanetFrame { width: rw, height: rh, params: p, patches: &patches, masks: &masks, vertices: &vertices };
         let tr = Instant::now();
         let (px, t) = be.render_planet(&tex, &frame).expect("render planet");
         let render_ms = tr.elapsed().as_secs_f64() * 1e3;
@@ -415,7 +625,11 @@ fn main() {
         let mut hdr = px;
         // STARS=0 (solar round 1, the system renderer's Earth handoff): no star splat here, the
         // system pass draws the sky behind Earth
-        let stars = if std::env::var("STARS").as_deref() == Ok("0") { Vec::new() } else { load_stars(&data_dir.join("bsc5.dat"), s.gmst) };
+        let stars = if std::env::var("STARS").as_deref() == Ok("0") {
+            Vec::new()
+        } else {
+            load_stars(&data_dir.join("bsc5.dat"), s.gmst)
+        };
         let px_sr = (2.0 * ty / rh as f64).powi(2);
         let mut nstars = 0;
         for st in &stars {
@@ -434,7 +648,9 @@ fn main() {
             let (ix, iy) = (fx.floor() as i64, fy.floor() as i64);
             let (ax, ay) = (fx - ix as f64, fy - iy as f64);
             let l = (st.flux / px_sr * s.exposure) as f32;
-            for (dx, dy, wgt) in [(0, 0, (1.0 - ax) * (1.0 - ay)), (1, 0, ax * (1.0 - ay)), (0, 1, (1.0 - ax) * ay), (1, 1, ax * ay)] {
+            for (dx, dy, wgt) in
+                [(0, 0, (1.0 - ax) * (1.0 - ay)), (1, 0, ax * (1.0 - ay)), (0, 1, (1.0 - ax) * ay), (1, 1, ax * ay)]
+            {
                 let (xx, yy) = (ix + dx, iy + dy);
                 if xx < 0 || yy < 0 || xx >= rw as i64 || yy >= rh as i64 {
                     continue;
@@ -450,7 +666,8 @@ fn main() {
         // HDR_OUT=1 (solar round 1): also write <name>.hdr.bin, the exposed linear HDR at the
         // render size (rw x rh x RGBA f32 little-endian, alpha = transmittance toward space)
         if std::env::var("HDR_OUT").as_deref() == Ok("1") {
-            std::fs::write(out.join(format!("{}.hdr.bin", s.name)), bytemuck::cast_slice::<[f32; 4], u8>(&hdr)).unwrap();
+            std::fs::write(out.join(format!("{}.hdr.bin", s.name)), bytemuck::cast_slice::<[f32; 4], u8>(&hdr))
+                .unwrap();
         }
         // PROBE="x,y;x,y" (output pixels): print the linear radiance (units of solar illuminance)
         let unexp = 1.0 / s.exposure as f32;
@@ -458,7 +675,13 @@ fn main() {
             for q in pr.split(';').filter_map(|q| q.split_once(',')) {
                 let (x, y): (u32, u32) = (q.0.parse().unwrap(), q.1.parse().unwrap());
                 let v = hdr[((y * ss) * rw + x * ss) as usize];
-                eprintln!("probe {x},{y}: {:.3e} {:.3e} {:.3e} (a {:.3})", v[0] * unexp, v[1] * unexp, v[2] * unexp, v[3]);
+                eprintln!(
+                    "probe {x},{y}: {:.3e} {:.3e} {:.3e} (a {:.3})",
+                    v[0] * unexp,
+                    v[1] * unexp,
+                    v[2] * unexp,
+                    v[3]
+                );
             }
         }
         // box downsample in linear light, exposure, ACES, sRGB
@@ -526,7 +749,23 @@ fn main() {
         let breakdown_json = json_array(t.breakdown.iter().map(|(n, ms)| format!("[\"{n}\",{ms:.3}]")));
         let shot_json = format!(
             "{{\"lat\":{},\"lon\":{},\"heading\":{},\"pitch\":{},\"fov_y\":{},\"sun_lat\":{},\"sun_lon\":{},\"exposure\":{},\"clouds\":\"{cloud_mode}\",\"ocean_haze\":{{\"aod550\":{},\"angstrom\":{},\"ssa\":{},\"mask_km\":{},\"dust\":{}}},\"cloud_feather_km\":{},\"cloud_feather_mix\":{},\"hole_noise\":{},\"epic_grade\":{},\"timing_device\":\"lavapipe (CPU Vulkan), not a real-GPU timing\"}}",
-            s.lat, s.lon, s.heading, s.pitch, s.fov_y, s.sun_lat, s.sun_lon, s.exposure, haze[0], haze[1], haze[2], haze[3], cloud3[3], cloud3[0], cloud3[1], cloud3[2], grade.map_or("null".to_string(), |g| format!("{:?}", g))
+            s.lat,
+            s.lon,
+            s.heading,
+            s.pitch,
+            s.fov_y,
+            s.sun_lat,
+            s.sun_lon,
+            s.exposure,
+            haze[0],
+            haze[1],
+            haze[2],
+            haze[3],
+            cloud3[3],
+            cloud3[0],
+            cloud3[1],
+            cloud3[2],
+            grade.map_or("null".to_string(), |g| format!("{:?}", g))
         );
         let json = format!(
             "{{\"shot\":\"{}\",\"size\":[{w},{h}],\"ss\":{ss},\"alt_km\":{alt_km:.1},\"patches\":{},\"leaves\":{},\"balance_splits\":{},\"triangles\":{},\"vertices\":{},\"vertex_mb\":{:.1},\"levels\":{levels_json},\"texture_mb\":{:.1},\"select_ms\":{sel_ms:.2},\"mesh_build_ms\":{build_ms:.1},\"gpu_ms_cold\":{cold_gpu_ms:.1},\"gpu_ms\":{:.1},\"gpu_breakdown\":{breakdown_json},\"render_wall_ms\":{render_ms:.0},\"stars_drawn\":{nstars},\"validation_errors\":{},\"textures\":{tex_json},\"params\":{shot_json}}}",
@@ -575,13 +814,26 @@ fn graft_ktx2(g: &planet::graft::GraftFile, grf: &str, which: &str) -> (planet::
             }
         }
         let t = Texture { name: which.into(), format: fmt, size, mips, data };
-        let bytes = write_array(&t, g.levels.len() as u32, Supercompression::Zstd(12), &[("bevy-brutal.graft", grf.as_bytes())]).expect("graft KTX2");
+        let bytes = write_array(
+            &t,
+            g.levels.len() as u32,
+            Supercompression::Zstd(12),
+            &[("bevy-brutal.graft", grf.as_bytes())],
+        )
+        .expect("graft KTX2");
         std::fs::write(&path, &bytes).unwrap_or_else(|e| panic!("{path}: {e}"));
-        eprintln!("graft: encoded {path} ({:.1} MB on disk) in {:.1} s", bytes.len() as f64 / 1048576.0, t0.elapsed().as_secs_f64());
+        eprintln!(
+            "graft: encoded {path} ({:.1} MB on disk) in {:.1} s",
+            bytes.len() as f64 / 1048576.0,
+            t0.elapsed().as_secs_f64()
+        );
     }
     let bytes = std::fs::read(&path).unwrap_or_else(|e| panic!("{path}: {e}"));
     let k = Ktx2::parse(&bytes).unwrap_or_else(|e| panic!("{path}: {e}"));
-    assert!(k.array && k.images as usize == g.levels.len() && k.size == size && k.format == fmt, "{path}: does not match the graft");
+    assert!(
+        k.array && k.images as usize == g.levels.len() && k.size == size && k.format == fmt,
+        "{path}: does not match the graft"
+    );
     let lm = k.decode_level_major().expect("graft KTX2 decode");
     let mut out = vec![Vec::new(); k.images as usize];
     let mut o = 0;
@@ -603,10 +855,12 @@ fn epic_grade() -> Option<[[f32; 3]; 3]> {
     match vals.len() {
         1 if vals[0] != 0.0 => {
             let s = vals[0];
-            Some(std::array::from_fn(|i| std::array::from_fn(|j| {
-                let id = if i == j { 1.0 } else { 0.0 };
-                id + s * (FIT[i][j] - id)
-            })))
+            Some(std::array::from_fn(|i| {
+                std::array::from_fn(|j| {
+                    let id = if i == j { 1.0 } else { 0.0 };
+                    id + s * (FIT[i][j] - id)
+                })
+            }))
         }
         9 => Some(std::array::from_fn(|i| std::array::from_fn(|j| vals[i * 3 + j]))),
         _ => None,

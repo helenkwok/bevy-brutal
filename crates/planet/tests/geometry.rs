@@ -26,7 +26,14 @@ fn view(cam: DVec3, target: DVec3, fov_y: f64, h_px: f64, err: f64, max_level: u
         let l = n.length();
         DVec4::new(n.x / l, n.y / l, n.z / l, w / l)
     };
-    let planes = [pl(r + f * tx, 0.0), pl(-r + f * tx, 0.0), pl(u + f * ty, 0.0), pl(-u + f * ty, 0.0), pl(f, -1.0), pl(-f, 1e10)];
+    let planes = [
+        pl(r + f * tx, 0.0),
+        pl(-r + f * tx, 0.0),
+        pl(u + f * ty, 0.0),
+        pl(-u + f * ty, 0.0),
+        pl(f, -1.0),
+        pl(-f, 1e10),
+    ];
     View { cam, planes, px_per_rad: h_px / (2.0 * (fov_y / 2.0).tan()), max_error_px: err, max_level }
 }
 
@@ -36,7 +43,16 @@ fn cameras() -> Vec<(DVec3, DVec3)> {
     let mut v = Vec::new();
     let corner = DVec3::new(1.0, 1.0, 1.0).normalize();
     let edge = DVec3::new(1.0, 1.0, 0.0).normalize();
-    for (d, alt) in [(corner, 2.0), (corner, 400e3), (edge, 2.0), (edge, 30e3), (DVec3::Z, 10.0), (-DVec3::Z, 400e3), (cube::latlon_dir(10.0, -20.0), 35_786e3), (cube::latlon_dir(45.0, 45.0), 5.0)] {
+    for (d, alt) in [
+        (corner, 2.0),
+        (corner, 400e3),
+        (edge, 2.0),
+        (edge, 30e3),
+        (DVec3::Z, 10.0),
+        (-DVec3::Z, 400e3),
+        (cube::latlon_dir(10.0, -20.0), 35_786e3),
+        (cube::latlon_dir(45.0, 45.0), 5.0),
+    ] {
         let cam = d * (R + alt);
         let side = d.cross(DVec3::new(0.3, 0.5, 0.8)).normalize();
         v.push((cam, DVec3::ZERO)); // nadir
@@ -115,7 +131,10 @@ fn shared_edges_bit_exact_at_all_masks() {
                 let mine: HashSet<[u64; 3]> = edge_positions(k, e, *m).into_iter().collect();
                 // the neighbour's edge facing us
                 let Some(ce) = (0..4u32).find(|&e2| c.neighbour(e2 as usize).covers(k)) else {
-                    panic!("no back edge: {k:?} e{e} nb {nb:?} covering {c:?}: {:?}", (0..4).map(|e2| c.neighbour(e2)).collect::<Vec<_>>());
+                    panic!(
+                        "no back edge: {k:?} e{e} nb {nb:?} covering {c:?}: {:?}",
+                        (0..4).map(|e2| c.neighbour(e2)).collect::<Vec<_>>()
+                    );
                 };
                 let theirs: HashSet<[u64; 3]> = edge_positions(&c, ce, cm).into_iter().collect();
                 if c.level == k.level {
@@ -138,7 +157,10 @@ fn shared_edges_bit_exact_at_all_masks() {
 fn whole_sphere_watertight_and_consistently_oriented() {
     // every leaf (not only visible ones) with its mask: weld by exact f64 position and require
     // each undirected edge to be used by exactly two triangles, once in each direction
-    for (cam, t) in [(cube::latlon_dir(35.26, 45.0) * (R + 50.0), DVec3::ZERO), (cube::latlon_dir(0.0, 45.0) * (R + 400e3), DVec3::ZERO)] {
+    for (cam, t) in [
+        (cube::latlon_dir(35.26, 45.0) * (R + 50.0), DVec3::ZERO),
+        (cube::latlon_dir(0.0, 45.0) * (R + 400e3), DVec3::ZERO),
+    ] {
         let s = select(cam, t, 12);
         let mut ids: HashMap<[u64; 3], u32> = HashMap::new();
         let mut directed: HashMap<(u32, u32), u32> = HashMap::new();
@@ -278,7 +300,10 @@ fn camera_relative_f32_precision_at_orbit() {
                         naive_near = naive_near.max((naive - exact).length());
                     }
                     if a == 0 || a == N || b == 0 || b == N {
-                        let key = { let p = exact + cam; [p.x.to_bits(), p.y.to_bits(), p.z.to_bits()] };
+                        let key = {
+                            let p = exact + cam;
+                            [p.x.to_bits(), p.y.to_bits(), p.z.to_bits()]
+                        };
                         if let Some(prev) = seen.insert(key, gpu) {
                             seam = seam.max((prev - gpu).length() / exact.length());
                         }
@@ -286,12 +311,17 @@ fn camera_relative_f32_precision_at_orbit() {
                 }
             }
         }
-        println!("alt {alt:>10} m: worst rel err {worst_rel:.2e} (naive f32 {worst_naive_rel:.2e}), near-camera abs {worst_near:.4} m (naive {naive_near:.3} m), shared-vertex f32 gap rel {seam:.2e}");
+        println!(
+            "alt {alt:>10} m: worst rel err {worst_rel:.2e} (naive f32 {worst_naive_rel:.2e}), near-camera abs {worst_near:.4} m (naive {naive_near:.3} m), shared-vertex f32 gap rel {seam:.2e}"
+        );
         assert!(worst_rel < 2e-7, "relative error {worst_rel}");
         assert!(worst_near < nadir_tol, "near error {worst_near} m");
         assert!(seam < 2e-7, "shared vertex f32 gap {seam}");
         if alt < 1e6 {
-            assert!(naive_near > 10.0 * worst_near.max(1e-6), "control: naive f32 should be much worse near the camera");
+            assert!(
+                naive_near > 10.0 * worst_near.max(1e-6),
+                "control: naive f32 should be much worse near the camera"
+            );
         }
     }
 }

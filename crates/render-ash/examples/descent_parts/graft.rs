@@ -108,7 +108,11 @@ impl Grid {
         let m = (margin_m / step).ceil() as usize;
         let n = size as usize + 2 * m;
         let (x0, z0) = (cx - half + 0.5 * step - m as f64 * step, cz - half + 0.5 * step - m as f64 * step);
-        let h: Vec<f32> = (0..n * n).into_par_iter().with_min_len(n).map(|k| field.height(x0 + (k % n) as f64 * step, z0 + (k / n) as f64 * step, step) as f32).collect();
+        let h: Vec<f32> = (0..n * n)
+            .into_par_iter()
+            .with_min_len(n)
+            .map(|k| field.height(x0 + (k % n) as f64 * step, z0 + (k / n) as f64 * step, step) as f32)
+            .collect();
         Self { n, x0, z0, step, h }
     }
     fn at(&self, i: usize, j: usize) -> f64 {
@@ -135,7 +139,14 @@ pub type ImageryFn<'a> = &'a (dyn Fn(f64, f64, DVec3, bool, f64) -> ([f64; 3], f
 /// Bake both levels for a world-frame sun direction. With `imagery` (a grounded field), the
 /// albedo blends from the material port to the imagery by the field's DEM weight, and the
 /// albedo alpha carries 1 - water.
-pub fn bake(field: &Alpine, map: &GraftMap, lat: f64, lon: f64, sun_world: DVec3, imagery: Option<ImageryFn>) -> GraftFile {
+pub fn bake(
+    field: &Alpine,
+    map: &GraftMap,
+    lat: f64,
+    lon: f64,
+    sun_world: DVec3,
+    imagery: Option<ImageryFn>,
+) -> GraftFile {
     let (cx, cz) = map.world_xz;
     let outer_grid = Grid::new(field, cx, cz, OUTER.1, OUTER.0, SHADOW_M + 1000.0);
     let mut levels = Vec::new();
@@ -210,7 +221,15 @@ pub fn bake(field: &Alpine, map: &GraftMap, lat: f64, lon: f64, sun_world: DVec3
                     a = lerp3(a, ia, ss(0.0, 0.6, wd));
                     water = iw * wd;
                 }
-                ([srgb8(a[0]), srgb8(a[1]), srgb8(a[2]), ((1.0 - water) * 255.0).round() as u8], [((nrm.x * 0.5 + 0.5) * 255.0).round() as u8, ((nrm.z * 0.5 + 0.5) * 255.0).round() as u8, (vis * 255.0).round() as u8, (ao * 255.0).round() as u8])
+                (
+                    [srgb8(a[0]), srgb8(a[1]), srgb8(a[2]), ((1.0 - water) * 255.0).round() as u8],
+                    [
+                        ((nrm.x * 0.5 + 0.5) * 255.0).round() as u8,
+                        ((nrm.z * 0.5 + 0.5) * 255.0).round() as u8,
+                        (vis * 255.0).round() as u8,
+                        (ao * 255.0).round() as u8,
+                    ],
+                )
             })
             .collect();
         let mut albedo_px = Vec::with_capacity(n * n * 4);
@@ -222,7 +241,15 @@ pub fn bake(field: &Alpine, map: &GraftMap, lat: f64, lon: f64, sun_world: DVec3
         eprintln!("graft level {li}: {size}^2 at {:.1} m, {:.1} s", step, t.elapsed().as_secs_f64());
         levels.push(GraftLevel { size, half_m: half, albedo: albedo_px, aux });
     }
-    GraftFile { lat, lon, world_xz: map.world_xz, r_full_m: R_FULL_M, r_out_m: R_OUT_M, sun_world: sun_world.to_array(), levels }
+    GraftFile {
+        lat,
+        lon,
+        world_xz: map.world_xz,
+        r_full_m: R_FULL_M,
+        r_out_m: R_OUT_M,
+        sun_world: sun_world.to_array(),
+        levels,
+    }
 }
 
 /// Patch spacing (m) of a quadtree level: a face spans ~R pi/2 over 2^level patches of N quads.
@@ -233,7 +260,14 @@ pub fn level_spacing(level: u8) -> f64 {
 /// Graft height blend: the real height `h_real` at direction `d`, the field's at the same point
 /// (filtered at the patch's vertex spacing) weighted by the spatial weight x `strength`;
 /// `blend` = (r_full, r_out, strength).
-pub fn graft_height(field: &Alpine, map: &GraftMap, blend: (f64, f64, f64), d: DVec3, h_real: f64, spacing: f64) -> f64 {
+pub fn graft_height(
+    field: &Alpine,
+    map: &GraftMap,
+    blend: (f64, f64, f64),
+    d: DVec3,
+    h_real: f64,
+    spacing: f64,
+) -> f64 {
     let (r0, r1, strength) = blend;
     if strength <= 0.0 {
         return h_real;

@@ -53,7 +53,15 @@ impl Dem {
         let h: Vec<f32> = raw.as_chunks::<4>().0.iter().map(|c| f32::from_le_bytes(*c)).collect();
         let (rows, cols) = (json_f(&j, "rows") as usize, json_f(&j, "cols") as usize);
         assert_eq!(h.len(), rows * cols, "{stem}");
-        Self { lat0: json_f(&j, "lat0"), lon0: json_f(&j, "lon0"), dlat: json_f(&j, "dlat"), dlon: json_f(&j, "dlon"), rows, cols, h }
+        Self {
+            lat0: json_f(&j, "lat0"),
+            lon0: json_f(&j, "lon0"),
+            dlat: json_f(&j, "dlat"),
+            dlon: json_f(&j, "dlon"),
+            rows,
+            cols,
+            h,
+        }
     }
 
     fn at(&self, r: isize, c: isize) -> f64 {
@@ -67,7 +75,14 @@ impl Dem {
         let (v, u) = ((self.lat0 - lat) / self.dlat, (lon - self.lon0) / self.dlon);
         let (r, c) = (v.floor(), u.floor());
         let (fv, fu) = (v - r, u - c);
-        let w = |t: f64| [((-0.5 * t + 1.0) * t - 0.5) * t, (1.5 * t - 2.5) * t * t + 1.0, ((-1.5 * t + 2.0) * t + 0.5) * t, (0.5 * t - 0.5) * t * t];
+        let w = |t: f64| {
+            [
+                ((-0.5 * t + 1.0) * t - 0.5) * t,
+                (1.5 * t - 2.5) * t * t + 1.0,
+                ((-1.5 * t + 2.0) * t + 0.5) * t,
+                (0.5 * t - 0.5) * t * t,
+            ]
+        };
         let (wv, wu) = (w(fv), w(fu));
         let mut s = 0.0;
         for (b, wb) in wv.iter().enumerate() {
@@ -80,7 +95,8 @@ impl Dem {
 
     /// Exactly flat 3x3 neighbourhood (Copernicus flattens water bodies to one height).
     pub fn flat(&self, lat: f64, lon: f64) -> bool {
-        let (r, c) = (((self.lat0 - lat) / self.dlat).round() as isize, ((lon - self.lon0) / self.dlon).round() as isize);
+        let (r, c) =
+            (((self.lat0 - lat) / self.dlat).round() as isize, ((lon - self.lon0) / self.dlon).round() as isize);
         let h0 = self.at(r, c);
         (-1..=1).all(|j| (-1..=1).all(|i| self.at(r + j, c + i) == h0))
     }
@@ -154,7 +170,10 @@ impl Merc {
 
     fn px(&self, lat: f64, lon: f64) -> (f64, f64) {
         let n = (256u64 << self.z) as f64;
-        ((lon + 180.0) / 360.0 * n - self.x0 - 0.5, (1.0 - lat.to_radians().tan().asinh() / std::f64::consts::PI) / 2.0 * n - self.y0 - 0.5)
+        (
+            (lon + 180.0) / 360.0 * n - self.x0 - 0.5,
+            (1.0 - lat.to_radians().tan().asinh() / std::f64::consts::PI) / 2.0 * n - self.y0 - 0.5,
+        )
     }
 
     fn inside(&self, lat: f64, lon: f64, margin: f64) -> bool {
@@ -165,7 +184,8 @@ impl Merc {
     /// Bilinear linear-light rgb.
     fn sample(&self, lat: f64, lon: f64) -> [f64; 3] {
         let (u, v) = self.px(lat, lon);
-        let (i, j) = (u.floor().clamp(0.0, (self.w - 2) as f64) as usize, v.floor().clamp(0.0, (self.h - 2) as f64) as usize);
+        let (i, j) =
+            (u.floor().clamp(0.0, (self.w - 2) as f64) as usize, v.floor().clamp(0.0, (self.h - 2) as f64) as usize);
         let (fu, fv) = ((u - i as f64).clamp(0.0, 1.0), (v - j as f64).clamp(0.0, 1.0));
         let p = |a: usize, b: usize, c: usize| srgb_lin(self.rgb[((j + b) * self.w + i + a) * 3 + c]);
         [0, 1, 2].map(|c| {

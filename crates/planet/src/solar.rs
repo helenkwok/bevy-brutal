@@ -159,22 +159,77 @@ pub fn body(id: BodyId) -> Body {
         ring_m: (0.0, 0.0),
     };
     match id {
-        BodyId::Sun => b(695_700.0, 695_700.0, 0.0, Surface::Star, (286.13, 0.0), (63.87, 0.0), (84.176, 14.184_4), 0.0),
-        BodyId::Mercury => b(2_440.53, 2_438.26, 0.142, Surface::Regolith, (281.0103, -0.0328), (61.4155, -0.0049), (329.5988, 6.138_510_8), 0.8),
-        BodyId::Venus => b(6_051.8, 6_051.8, 0.689, Surface::Cloud, (272.76, 0.0), (67.16, 0.0), (160.20, -1.481_368_8), 0.75),
-        BodyId::Earth => b(6_378.137, 6_356.752, 0.434, Surface::Earth, (0.0, -0.641), (90.0, -0.557), (190.147, 360.985_623_5), 1.0),
-        BodyId::Moon => b(1_737.4, 1_737.4, 0.12, Surface::Regolith, (269.9949, 0.0031), (66.5392, 0.0130), (38.3213, 13.176_358_15), 0.9),
-        BodyId::Mars => b(3_396.19, 3_376.20, 0.170, Surface::Dusty, (317.269_202, -0.109_275_47), (54.432_516, -0.058_271_05), (176.049_863, 350.891_982_443_297), 0.6),
-        BodyId::Jupiter => b(71_492.0, 66_854.0, 0.538, Surface::Giant, (268.056_595, -0.006_499), (64.495_303, 0.002_413), (284.95, 870.536), 0.88),
+        BodyId::Sun => {
+            b(695_700.0, 695_700.0, 0.0, Surface::Star, (286.13, 0.0), (63.87, 0.0), (84.176, 14.184_4), 0.0)
+        }
+        BodyId::Mercury => b(
+            2_440.53,
+            2_438.26,
+            0.142,
+            Surface::Regolith,
+            (281.0103, -0.0328),
+            (61.4155, -0.0049),
+            (329.5988, 6.138_510_8),
+            0.8,
+        ),
+        BodyId::Venus => {
+            b(6_051.8, 6_051.8, 0.689, Surface::Cloud, (272.76, 0.0), (67.16, 0.0), (160.20, -1.481_368_8), 0.75)
+        }
+        BodyId::Earth => {
+            b(6_378.137, 6_356.752, 0.434, Surface::Earth, (0.0, -0.641), (90.0, -0.557), (190.147, 360.985_623_5), 1.0)
+        }
+        BodyId::Moon => b(
+            1_737.4,
+            1_737.4,
+            0.12,
+            Surface::Regolith,
+            (269.9949, 0.0031),
+            (66.5392, 0.0130),
+            (38.3213, 13.176_358_15),
+            0.9,
+        ),
+        BodyId::Mars => b(
+            3_396.19,
+            3_376.20,
+            0.170,
+            Surface::Dusty,
+            (317.269_202, -0.109_275_47),
+            (54.432_516, -0.058_271_05),
+            (176.049_863, 350.891_982_443_297),
+            0.6,
+        ),
+        BodyId::Jupiter => b(
+            71_492.0,
+            66_854.0,
+            0.538,
+            Surface::Giant,
+            (268.056_595, -0.006_499),
+            (64.495_303, 0.002_413),
+            (284.95, 870.536),
+            0.88,
+        ),
         BodyId::Saturn => Body {
             // the ring profile's span, calibrated on its features (B inner edge 92,000 km, Cassini
             // division 117,580 km, Encke gap 133,590 km, A outer edge 136,775 km, F ring 140,180 km):
             // 69,700 km (D ring) to 141,020 km, ~34.8 km per texel of the 2048-texel profile
             ring_m: (69_700.0e3, 141_020.0e3),
-            ..b(60_268.0, 54_364.0, 0.499, Surface::Giant, (40.589, -0.036), (83.537, -0.004), (38.90, 810.793_902_4), 0.9)
+            ..b(
+                60_268.0,
+                54_364.0,
+                0.499,
+                Surface::Giant,
+                (40.589, -0.036),
+                (83.537, -0.004),
+                (38.90, 810.793_902_4),
+                0.9,
+            )
         },
-        BodyId::Uranus => b(25_559.0, 24_973.0, 0.488, Surface::Giant, (257.311, 0.0), (-15.175, 0.0), (203.81, -501.160_092_8), 0.9),
-        BodyId::Neptune => b(24_764.0, 24_341.0, 0.442, Surface::Giant, (299.36, 0.0), (43.46, 0.0), (249.978, 541.139_775_7), 0.9),
+        BodyId::Uranus => {
+            b(25_559.0, 24_973.0, 0.488, Surface::Giant, (257.311, 0.0), (-15.175, 0.0), (203.81, -501.160_092_8), 0.9)
+        }
+        BodyId::Neptune => {
+            b(24_764.0, 24_341.0, 0.442, Surface::Giant, (299.36, 0.0), (43.46, 0.0), (249.978, 541.139_775_7), 0.9)
+        }
     }
 }
 
@@ -259,11 +314,19 @@ pub fn moon_geocentric(ep: Epoch) -> DVec3 {
     let t = ep.t_tt();
     let s = |a: f64, b: f64| (a + b * t).to_radians().sin();
     let c = |a: f64, b: f64| (a + b * t).to_radians().cos();
-    let lon = 218.32 + 481_267.881 * t + 6.29 * s(135.0, 477_198.87) - 1.27 * s(259.3, -413_335.36) + 0.66 * s(235.7, 890_534.22) + 0.21 * s(269.9, 954_397.74)
+    let lon = 218.32 + 481_267.881 * t + 6.29 * s(135.0, 477_198.87) - 1.27 * s(259.3, -413_335.36)
+        + 0.66 * s(235.7, 890_534.22)
+        + 0.21 * s(269.9, 954_397.74)
         - 0.19 * s(357.5, 35_999.05)
         - 0.11 * s(186.5, 966_404.03);
-    let lat = 5.13 * s(93.3, 483_202.02) + 0.28 * s(228.2, 960_400.89) - 0.28 * s(318.3, 6_003.15) - 0.17 * s(217.6, -407_332.21);
-    let par = 0.9508 + 0.0518 * c(135.0, 477_198.87) + 0.0095 * c(259.3, -413_335.36) + 0.0078 * c(235.7, 890_534.22) + 0.0028 * c(269.9, 954_397.74);
+    let lat = 5.13 * s(93.3, 483_202.02) + 0.28 * s(228.2, 960_400.89)
+        - 0.28 * s(318.3, 6_003.15)
+        - 0.17 * s(217.6, -407_332.21);
+    let par = 0.9508
+        + 0.0518 * c(135.0, 477_198.87)
+        + 0.0095 * c(259.3, -413_335.36)
+        + 0.0078 * c(235.7, 890_534.22)
+        + 0.0028 * c(269.9, 954_397.74);
     let r = 6_378_140.0 / par.to_radians().sin();
     // of date -> J2000: general precession in longitude
     let lon = (lon - 1.396_971_3 * t).to_radians();
@@ -342,7 +405,9 @@ impl Body {
         let dec = self.pole_dec.0 + self.pole_dec.1 * t;
         let w = (self.w.0 + self.w.1 * d).rem_euclid(360.0);
         // IAU: body frame = Rz(W) Rx(90 - dec) Rz(90 + ra) applied to ICRF
-        let m = DMat3::from_rotation_z(-w.to_radians()) * DMat3::from_rotation_x(-(90.0 - dec).to_radians()) * DMat3::from_rotation_z(-(90.0 + ra).to_radians());
+        let m = DMat3::from_rotation_z(-w.to_radians())
+            * DMat3::from_rotation_x(-(90.0 - dec).to_radians())
+            * DMat3::from_rotation_z(-(90.0 + ra).to_radians());
         m * eq_from_ecl
     }
 
@@ -497,7 +562,14 @@ mod tests {
         // obliquities (the IAU north pole is the one north of the invariable plane, so Uranus's
         // 97.77 deg reads as 82.23): Earth 23.44, Mars 25.19, Jupiter 3.13, Saturn 26.73, Uranus 97.77, Neptune 28.32
         // (pole vs the planet's own orbit normal, ~ the ecliptic normal to within the inclination)
-        for (id, ob, tol) in [(BodyId::Earth, 23.44, 0.05), (BodyId::Mars, 25.19, 1.9), (BodyId::Jupiter, 3.13, 1.4), (BodyId::Saturn, 26.73, 2.5), (BodyId::Uranus, 180.0 - 97.77, 0.8), (BodyId::Neptune, 28.32, 1.8)] {
+        for (id, ob, tol) in [
+            (BodyId::Earth, 23.44, 0.05),
+            (BodyId::Mars, 25.19, 1.9),
+            (BodyId::Jupiter, 3.13, 1.4),
+            (BodyId::Saturn, 26.73, 2.5),
+            (BodyId::Uranus, 180.0 - 97.77, 0.8),
+            (BodyId::Neptune, 28.32, 1.8),
+        ] {
             let a = body(id).pole_ecliptic(ep).angle_between(DVec3::Z).to_degrees();
             assert!((a - ob).abs() < tol, "{id:?} tilt {a}");
         }

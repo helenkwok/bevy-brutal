@@ -40,9 +40,19 @@ pub fn vk_format(f: TexFormat) -> u32 {
     }
 }
 pub fn from_vk_format(v: u32) -> Option<TexFormat> {
-    [TexFormat::Bc7Srgb, TexFormat::Bc7, TexFormat::Bc5, TexFormat::Bc4, TexFormat::Rgba8Srgb, TexFormat::Rgba8, TexFormat::Rg8, TexFormat::R8, TexFormat::R16]
-        .into_iter()
-        .find(|&f| vk_format(f) == v)
+    [
+        TexFormat::Bc7Srgb,
+        TexFormat::Bc7,
+        TexFormat::Bc5,
+        TexFormat::Bc4,
+        TexFormat::Rgba8Srgb,
+        TexFormat::Rgba8,
+        TexFormat::Rg8,
+        TexFormat::R8,
+        TexFormat::R16,
+    ]
+    .into_iter()
+    .find(|&f| vk_format(f) == v)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -74,10 +84,17 @@ pub fn level_bytes(fmt: TexFormat, size: u32, level: u32) -> usize {
 
 fn dfd(fmt: TexFormat) -> Vec<u8> {
     // (colour model, block dims - 1, bytes per block / texel, samples: (bit offset, bit length, channel, upper))
-    let bc = |m: u8, ch: &[(u16, u8, u8)], bytes: u8| (m, [3u8, 3, 0, 0], bytes, ch.iter().map(|&(o, l, c)| (o, l, c, u32::MAX)).collect::<Vec<_>>());
+    let bc = |m: u8, ch: &[(u16, u8, u8)], bytes: u8| {
+        (m, [3u8, 3, 0, 0], bytes, ch.iter().map(|&(o, l, c)| (o, l, c, u32::MAX)).collect::<Vec<_>>())
+    };
     let raw = |ch: &[u8], bits: u8| {
         let up = if bits == 8 { 255u32 } else { 65535 };
-        (1u8, [0u8; 4], (ch.len() as u8) * bits / 8, ch.iter().enumerate().map(|(i, &c)| ((i as u16) * bits as u16, bits - 1, c, up)).collect::<Vec<_>>())
+        (
+            1u8,
+            [0u8; 4],
+            (ch.len() as u8) * bits / 8,
+            ch.iter().enumerate().map(|(i, &c)| ((i as u16) * bits as u16, bits - 1, c, up)).collect::<Vec<_>>(),
+        )
     };
     let (model, dims, bytes, mut samples) = match fmt {
         TexFormat::Bc7Srgb | TexFormat::Bc7 => bc(134, &[(0, 127, 0)], 16),
@@ -94,11 +111,11 @@ fn dfd(fmt: TexFormat) -> Vec<u8> {
     let transfer = if fmt.is_srgb() { 2u32 } else { 1 };
     let block = 24 + 16 * samples.len() as u32;
     let mut w = vec![
-        0u32,                                            // vendorId 0 (Khronos), descriptorType 0 (basic)
-        2 | (block << 16),                               // versionNumber 2, descriptorBlockSize
-        model as u32 | (1 << 8) | (transfer << 16),      // model, primaries BT.709, transfer, flags 0
+        0u32,                                       // vendorId 0 (Khronos), descriptorType 0 (basic)
+        2 | (block << 16),                          // versionNumber 2, descriptorBlockSize
+        model as u32 | (1 << 8) | (transfer << 16), // model, primaries BT.709, transfer, flags 0
         u32::from_le_bytes(dims),
-        bytes as u32,                                    // bytesPlane0 (sized also when supercompressed, spec >= 2.0.4)
+        bytes as u32, // bytesPlane0 (sized also when supercompressed, spec >= 2.0.4)
         0,
     ];
     for (off, len, ch, up) in samples {
@@ -128,7 +145,13 @@ pub fn write_array(t: &Texture, layers: u32, sc: Supercompression, kv: &[(&str, 
     write_images(t, layers as usize, true, sc, kv)
 }
 
-fn write_images(t: &Texture, images: usize, array: bool, sc: Supercompression, kv: &[(&str, &[u8])]) -> Result<Vec<u8>, Ktx2Error> {
+fn write_images(
+    t: &Texture,
+    images: usize,
+    array: bool,
+    sc: Supercompression,
+    kv: &[(&str, &[u8])],
+) -> Result<Vec<u8>, Ktx2Error> {
     let mut levels: Vec<Vec<u8>> = Vec::with_capacity(t.mips as usize);
     let layer: usize = (0..t.mips).map(|m| mip_bytes(t.format, t.size, m)).sum();
     if t.data.len() != images * layer {
@@ -151,7 +174,8 @@ fn write_images(t: &Texture, images: usize, array: bool, sc: Supercompression, k
             .map(|l| {
                 let mut c = zstd::bulk::Compressor::new(q).map_err(|e| Ktx2Error::Zstd(e.to_string()))?;
                 if l.len() > (16 << 20) {
-                    c.multithread(std::thread::available_parallelism().map(|n| n.get() as u32).unwrap_or(4)).map_err(|e| Ktx2Error::Zstd(e.to_string()))?;
+                    c.multithread(std::thread::available_parallelism().map(|n| n.get() as u32).unwrap_or(4))
+                        .map_err(|e| Ktx2Error::Zstd(e.to_string()))?;
                 }
                 c.compress(&l).map_err(|e| Ktx2Error::Zstd(e.to_string()))
             })
@@ -184,7 +208,17 @@ fn write_images(t: &Texture, images: usize, array: bool, sc: Supercompression, k
     out.extend_from_slice(&IDENTIFIER);
     let type_size = if t.format == TexFormat::R16 { 2u32 } else { 1 };
     let (layer_count, face_count) = if array { (images as u32, 1) } else { (0, 6) };
-    for v in [vk_format(t.format), type_size, t.size, t.size, 0, layer_count, face_count, t.mips, if supercompressed { SUPERCOMPRESSION_ZSTD } else { SUPERCOMPRESSION_NONE }] {
+    for v in [
+        vk_format(t.format),
+        type_size,
+        t.size,
+        t.size,
+        0,
+        layer_count,
+        face_count,
+        t.mips,
+        if supercompressed { SUPERCOMPRESSION_ZSTD } else { SUPERCOMPRESSION_NONE },
+    ] {
         out.extend(v.to_le_bytes());
     }
     for v in [dfd_off as u32, dfd.len() as u32, if kvd.is_empty() { 0 } else { kvd_off as u32 }, kvd.len() as u32] {
@@ -256,7 +290,11 @@ fn u64_at(b: &[u8], o: usize) -> Result<usize, Ktx2Error> {
 impl<'a> Ktx2<'a> {
     pub fn parse(b: &'a [u8]) -> Result<Self, Ktx2Error> {
         if b.len() < HEADER || b[..12] != IDENTIFIER {
-            return Err(if b.len() < 12 || b[..12] != IDENTIFIER { Ktx2Error::BadIdentifier } else { Ktx2Error::Truncated("header") });
+            return Err(if b.len() < 12 || b[..12] != IDENTIFIER {
+                Ktx2Error::BadIdentifier
+            } else {
+                Ktx2Error::Truncated("header")
+            });
         }
         let h = |i: usize| u32_at(b, 12 + 4 * i);
         let format = from_vk_format(h(0)?).ok_or(Ktx2Error::Unsupported("vkFormat"))?;
@@ -264,12 +302,22 @@ impl<'a> Ktx2<'a> {
         let (images, array) = match (layers, faces) {
             (0, 6) => (6, false),
             (n @ 1..=64, 1) => (n, true),
-            _ => return Err(Ktx2Error::Unsupported("only square cube maps (faceCount 6, no array) or 2D arrays (faceCount 1, 1-64 layers)")),
+            _ => {
+                return Err(Ktx2Error::Unsupported(
+                    "only square cube maps (faceCount 6, no array) or 2D arrays (faceCount 1, 1-64 layers)",
+                ));
+            }
         };
         if w != hh || depth != 0 {
             return Err(Ktx2Error::Unsupported("only square images, no depth"));
         }
-        if w == 0 || !w.is_power_of_two() || mips == 0 || mips > 16 || (w >> (mips - 1)) == 0 || (format.is_block() && (w >> (mips - 1)) < 4) {
+        if w == 0
+            || !w.is_power_of_two()
+            || mips == 0
+            || mips > 16
+            || (w >> (mips - 1)) == 0
+            || (format.is_block() && (w >> (mips - 1)) < 4)
+        {
             return Err(Ktx2Error::Inconsistent("size / levelCount"));
         }
         if sc != SUPERCOMPRESSION_NONE && sc != SUPERCOMPRESSION_ZSTD {
@@ -291,7 +339,9 @@ impl<'a> Ktx2<'a> {
         }
         let mut kv = Vec::new();
         if kvd_len > 0 {
-            let kvd = b.get(kvd_off..kvd_off.checked_add(kvd_len).ok_or(Ktx2Error::Truncated("kvd"))?).ok_or(Ktx2Error::Truncated("kvd"))?;
+            let kvd = b
+                .get(kvd_off..kvd_off.checked_add(kvd_len).ok_or(Ktx2Error::Truncated("kvd"))?)
+                .ok_or(Ktx2Error::Truncated("kvd"))?;
             let mut o = 0;
             while o + 4 <= kvd.len() {
                 let n = u32_at(kvd, o)? as usize;

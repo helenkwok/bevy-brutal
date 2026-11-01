@@ -44,7 +44,11 @@ fn main() {
     let topo = topology(world.bricks.values());
     let merged = world.merged();
 
-    let mut b = AshBackend::new(BackendConfig { max_instances: 1, extent: (w, h), validation: validate, ..Default::default() }, None).expect("backend");
+    let mut b = AshBackend::new(
+        BackendConfig { max_instances: 1, extent: (w, h), validation: validate, ..Default::default() },
+        None,
+    )
+    .expect("backend");
     b.add_static_mesh(&merged.vertices, &merged.indices).unwrap();
     let proj = vk_perspective(0.9, w as f32 / h as f32, 0.1, 500.0);
     let vp = (proj * look_at(Vec3::new(-15.0, 7.5, 22.0), Vec3::new(-1.0, 4.0, 1.0), Vec3::Y)).to_cols_array_2d();

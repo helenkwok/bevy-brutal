@@ -38,14 +38,24 @@ fn main() {
     let layout = ShellLayout::camera_centred(&grid, [l(cx), l(gy), l(cz)], &[3, 3, 3]);
     let outer = *layout.boxes.last().unwrap();
     let coarse = 32 << layout.max_lod();
-    let al = |v: i64, up: bool| if up { (v + coarse - 1).div_euclid(coarse) * coarse } else { v.div_euclid(coarse) * coarse };
-    let region = ([al(outer.lo[0], false), al(l(gy) - 300, false), al(outer.lo[2], false)], [al(outer.hi[0], true), al(l(gy) + 700, true), al(outer.hi[2], true)]);
+    let al = |v: i64, up: bool| {
+        if up { (v + coarse - 1).div_euclid(coarse) * coarse } else { v.div_euclid(coarse) * coarse }
+    };
+    let region = (
+        [al(outer.lo[0], false), al(l(gy) - 300, false), al(outer.lo[2], false)],
+        [al(outer.hi[0], true), al(l(gy) + 700, true), al(outer.hi[2], true)],
+    );
     let t = Instant::now();
     let world = build_world_filtered(&field, &cfg, &layout, region, layout.max_lod()).unwrap();
     let bricks: Vec<(BrickCoord, &BrickMesh)> = world.bricks.iter().map(|(c, m)| (*c, m)).collect();
     let (nv, nt): (usize, usize) = (world.vertices(), world.triangles());
     let raw_bytes: usize = bricks.iter().map(|(_, m)| m.vertices.len() * 24 + m.indices.len() * 4).sum();
-    println!("world: {} bricks, {nv} vertices, {nt} triangles, raw GPU layout {:.2} MB (24 B/vertex + 12 B/triangle), built in {:.1} s", bricks.len(), raw_bytes as f64 / 1e6, t.elapsed().as_secs_f64());
+    println!(
+        "world: {} bricks, {nv} vertices, {nt} triangles, raw GPU layout {:.2} MB (24 B/vertex + 12 B/triangle), built in {:.1} s",
+        bricks.len(),
+        raw_bytes as f64 / 1e6,
+        t.elapsed().as_secs_f64()
+    );
     let mut lods = [0usize; 8];
     for (c, m) in &bricks {
         lods[c.lod as usize] += m.indices.len() / 3;
@@ -53,7 +63,10 @@ fn main() {
     println!("triangles per LOD: {:?}", &lods[..=layout.max_lod() as usize]);
 
     // ---- stream breakdown (ideal code length per model) for the default mode
-    let names = ["conn", "start", "sflags", "ref", "lat_ax", "lat_off", "frac_ax", "frac_off", "nu", "nv", "dir", "seq", "", "", "", "", "", "", "", "", "cand", "dsgn"];
+    let names = [
+        "conn", "start", "sflags", "ref", "lat_ax", "lat_off", "frac_ax", "frac_off", "nu", "nv", "dir", "seq", "", "",
+        "", "", "", "", "", "", "cand", "dsgn",
+    ];
     for (label, opts) in [
         ("traversal q0 (lossless)", MeshOpts::default()),
         ("traversal q2 (7.8 mm)", MeshOpts { qbits: 2, ..Default::default() }),
@@ -72,7 +85,11 @@ fn main() {
             let b = models[k].cost_bits(&counts.0[k]);
             // tagged tokens t > 1 carry t - 1 raw bits (exact for tagged models; 0 for plain symbols)
             let tagged = !matches!(k, 0..=2 | 10 | 20 | 21);
-            let rb: f64 = if tagged { counts.0[k].iter().enumerate().map(|(t, c)| *c as f64 * t.saturating_sub(1) as f64).sum() } else { 0.0 };
+            let rb: f64 = if tagged {
+                counts.0[k].iter().enumerate().map(|(t, c)| *c as f64 * t.saturating_sub(1) as f64).sum()
+            } else {
+                0.0
+            };
             if b > 0.0 {
                 s += &format!("{n} {:.2}+{:.2}  ", b / nt as f64, rb / nt as f64);
             }
@@ -113,7 +130,10 @@ fn main() {
         };
         let (one_s, _) = best_of(5, || {
             for (i, &(a, b)) in offs.iter().enumerate() {
-                let (na, nb) = (f.bricks()[i].mesh.unwrap().0.vertex_count as usize, f.bricks()[i].mesh.unwrap().0.index_count as usize);
+                let (na, nb) = (
+                    f.bricks()[i].mesh.unwrap().0.vertex_count as usize,
+                    f.bricks()[i].mesh.unwrap().0.index_count as usize,
+                );
                 decode_into(i, &mut verts[a..a + na], &mut idx[b..b + nb], a as u32);
             }
         });
@@ -152,7 +172,11 @@ fn main() {
         let _ = cores;
         println!("{label}: verify (open) {:.1} us for {} bricks", ver_s * 1e6, f.bricks().len());
     }
-    println!("\n| mode | file | ratio vs raw | bits/tri (all) | encode ms | decode MB/s out/in, 1 core | decode MB/s out/in, {} threads | us/brick (1 core) | bricks per 2 ms (1 core) | bricks per 2 ms ({} thr) |", rayon::current_num_threads(), rayon::current_num_threads());
+    println!(
+        "\n| mode | file | ratio vs raw | bits/tri (all) | encode ms | decode MB/s out/in, 1 core | decode MB/s out/in, {} threads | us/brick (1 core) | bricks per 2 ms (1 core) | bricks per 2 ms ({} thr) |",
+        rayon::current_num_threads(),
+        rayon::current_num_threads()
+    );
     println!("|---|---|---|---|---|---|---|---|---|---|");
     for r in rows {
         println!("{r}");
@@ -166,7 +190,12 @@ fn main() {
     let rawfile = AlignedBytes::from_slice(&w.finish());
     let (ver_s, f) = best_of(20, || File::open(rawfile.as_slice(), Limits::default()).unwrap());
     let n_ok = (0..f.bricks().len()).filter(|&i| f.raw_gpu(i).is_some()).count();
-    println!("\nraw (uncompressed, 256-aligned) file: {:.2} MB ({:.1} % padding overhead), open+verify {:.1} us, {n_ok} zero-copy GPU views", rawfile.as_slice().len() as f64 / 1e6, (rawfile.as_slice().len() as f64 / raw_bytes as f64 - 1.0) * 100.0, ver_s * 1e6);
+    println!(
+        "\nraw (uncompressed, 256-aligned) file: {:.2} MB ({:.1} % padding overhead), open+verify {:.1} us, {n_ok} zero-copy GPU views",
+        rawfile.as_slice().len() as f64 / 1e6,
+        (rawfile.as_slice().len() as f64 / raw_bytes as f64 - 1.0) * 100.0,
+        ver_s * 1e6
+    );
 
     // ---- density samples of the meshed bricks (the brick "terrain" payload)
     let coords: Vec<BrickCoord> = bricks.iter().map(|(c, _)| *c).take(256).collect();
@@ -185,7 +214,15 @@ fn main() {
     let sbuf = w.finish();
     let f = File::open(&sbuf, Limits::default()).unwrap();
     let (s1, _) = best_of(3, || (0..smp.len()).for_each(|i| drop(f.decode_samples(i).unwrap().unwrap())));
-    println!("samples: {} bricks, raw i32 {:.2} MB -> {:.3} MB ({:.1}:1, lossless), decode {:.0} MB/s out (1 core), {:.0} us/brick", smp.len(), sraw as f64 / 1e6, sbuf.len() as f64 / 1e6, sraw as f64 / sbuf.len() as f64, sraw as f64 / s1 / 1e6, s1 / smp.len() as f64 * 1e6);
+    println!(
+        "samples: {} bricks, raw i32 {:.2} MB -> {:.3} MB ({:.1}:1, lossless), decode {:.0} MB/s out (1 core), {:.0} us/brick",
+        smp.len(),
+        sraw as f64 / 1e6,
+        sbuf.len() as f64 / 1e6,
+        sraw as f64 / sbuf.len() as f64,
+        sraw as f64 / s1 / 1e6,
+        s1 / smp.len() as f64 * 1e6
+    );
 
     // ---- instances: forest-like clustered placement on the real height field
     let mut inst = Vec::new();
@@ -201,7 +238,14 @@ fn main() {
                 continue;
             }
             let h = 8.0 + 20.0 * rnd() * rnd();
-            inst.push(Instance { pos: [x, field.height(x, z, 0.5) - 0.3, z], yaw: (rnd() * std::f64::consts::TAU) as f32, height: h as f32, width: (h * (0.32 + 0.12 * rnd())) as f32, mesh: if rnd() < 0.1 { 3 } else { (rnd() * 3.0) as u8 }, material: (rnd() * 1023.0) as u16 });
+            inst.push(Instance {
+                pos: [x, field.height(x, z, 0.5) - 0.3, z],
+                yaw: (rnd() * std::f64::consts::TAU) as f32,
+                height: h as f32,
+                width: (h * (0.32 + 0.12 * rnd())) as f32,
+                mesh: if rnd() < 0.1 { 3 } else { (rnd() * 3.0) as u8 },
+                material: (rnd() * 1023.0) as u16,
+            });
         }
     }
     let mut w = Writer::new(grid);
@@ -211,9 +255,22 @@ fn main() {
     let ibuf = w.finish();
     let f = File::open(&ibuf, Limits::default()).unwrap();
     let cam = [cx, gy, cz];
-    let (s1, n) = best_of(3, || (0..f.chunks().len()).map(|i| f.decode_instances(i).unwrap().iter().map(|x| std::hint::black_box(x.to_gpu(cam))).fold(0, |n, _| n + 1)).sum::<usize>());
+    let (s1, n) = best_of(3, || {
+        (0..f.chunks().len())
+            .map(|i| {
+                f.decode_instances(i).unwrap().iter().map(|x| std::hint::black_box(x.to_gpu(cam))).fold(0, |n, _| n + 1)
+            })
+            .sum::<usize>()
+    });
     let gpu = inst.len() * size_of::<lowlevel_abi::InstanceGpu>();
-    println!("instances: {} -> {:.1} B each ({:.1}:1 vs 80 B InstanceGpu, {:.1}:1 vs a 36 B f64-pos+yaw+scale record), decode+matrix {:.1} M/s (1 core)", inst.len(), ibuf.len() as f64 / inst.len() as f64, gpu as f64 / ibuf.len() as f64, (inst.len() * 36) as f64 / ibuf.len() as f64, n as f64 / s1 / 1e6);
+    println!(
+        "instances: {} -> {:.1} B each ({:.1}:1 vs 80 B InstanceGpu, {:.1}:1 vs a 36 B f64-pos+yaw+scale record), decode+matrix {:.1} M/s (1 core)",
+        inst.len(),
+        ibuf.len() as f64 / inst.len() as f64,
+        gpu as f64 / ibuf.len() as f64,
+        (inst.len() * 36) as f64 / ibuf.len() as f64,
+        n as f64 / s1 / 1e6
+    );
 
     // ---- dump for Draco: per brick origin (m), extent (m), nv, nt, f32 pos (world-ish metres
     // relative to the brick origin), f32 normals, u32 indices

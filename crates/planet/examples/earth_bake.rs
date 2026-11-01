@@ -36,7 +36,14 @@ fn main() {
         let bytes = pack.to_bytes();
         std::fs::write(&out, &bytes).expect("write pack");
         let rt = planet::pack::PlanetPack::from_bytes(&bytes).expect("verify pack");
-        println!("wrote {} ({} MB, GPU textures {} MB, {} textures), verified, total {:.1} s", out.display(), bytes.len() >> 20, rt.gpu_bytes() >> 20, rt.textures.len(), t.elapsed().as_secs_f64());
+        println!(
+            "wrote {} ({} MB, GPU textures {} MB, {} textures), verified, total {:.1} s",
+            out.display(),
+            bytes.len() >> 20,
+            rt.gpu_bytes() >> 20,
+            rt.textures.len(),
+            t.elapsed().as_secs_f64()
+        );
         return;
     }
     let z = Supercompression::Zstd(env("BAKE_ZSTD", 19) as i32);
@@ -51,7 +58,12 @@ fn main() {
     let rep = bake_ktx2(&src, &cfg, &sets, &mut |s| println!("{s}")).expect("write KTX2");
     for (i, s) in sets.iter().enumerate() {
         let (f, g) = rep.iter().filter(|r| r.1 == i).fold((0, 0), |a, r| (a.0 + r.2, a.1 + r.3));
-        println!("set {}: files {:.1} MB, GPU (incl. CPU height) {:.1} MB", s.dir.display(), f as f64 / 1048576.0, g as f64 / 1048576.0);
+        println!(
+            "set {}: files {:.1} MB, GPU (incl. CPU height) {:.1} MB",
+            s.dir.display(),
+            f as f64 / 1048576.0,
+            g as f64 / 1048576.0
+        );
     }
     println!("total {:.1} s", t.elapsed().as_secs_f64());
 }

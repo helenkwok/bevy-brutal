@@ -90,7 +90,9 @@ fn alpine_density_is_continuous_in_outcrops_and_steep_rock_at_every_lod() {
         // the close-up camera's surroundings (the reported outcrop) and a wider world square
         for (cx, cz, half) in [(7799.0, -3614.0, 800.0), (0.0, 0.0, 12000.0)] {
             let (j, n, w, at) = scan_jumps(&f, cx, cz, half, cell, 400);
-            eprintln!("cell {cell} around ({cx}, {cz}) +-{half}: {j} jumps in {n} near-surface probes, worst {w:.2e} m at {at:?}");
+            eprintln!(
+                "cell {cell} around ({cx}, {cz}) +-{half}: {j} jumps in {n} near-surface probes, worst {w:.2e} m at {at:?}"
+            );
             total += j;
         }
     }

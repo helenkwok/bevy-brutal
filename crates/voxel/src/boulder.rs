@@ -42,7 +42,11 @@ impl Boulder {
             let y = 1.0 - 2.0 * (k as f64 + 0.5) / n as f64;
             let rr = (1.0 - y * y).sqrt();
             let a = k as f64 * 2.399_963 + 6.0 * r(1, k);
-            let d = norm([rr * a.cos() + 0.35 * (r(2, k) - 0.5), y + 0.35 * (r(3, k) - 0.5), rr * a.sin() + 0.35 * (r(4, k) - 0.5)]);
+            let d = norm([
+                rr * a.cos() + 0.35 * (r(2, k) - 0.5),
+                y + 0.35 * (r(3, k) - 0.5),
+                rr * a.sin() + 0.35 * (r(4, k) - 0.5),
+            ]);
             planes.push((d, 0.86 + 0.14 * r(5, k)));
         }
         // chips: corners / edges knocked off (shallower random cuts), a few big and many small
@@ -65,13 +69,20 @@ impl Boulder {
     /// plane of the polytope max): renderers use it for crisp, flat fracture facets.
     pub fn facet_normal(&self, p: [f64; 3]) -> [f64; 3] {
         let q = [p[0] / self.scale[0], p[1] / self.scale[1], p[2] / self.scale[2]];
-        let (n, _) = self.planes.iter().map(|(n, h)| (n, n[0] * q[0] + n[1] * q[1] + n[2] * q[2] - h)).fold((&self.planes[0].0, f64::MIN), |a, b| if b.1 > a.1 { b } else { a });
+        let (n, _) = self
+            .planes
+            .iter()
+            .map(|(n, h)| (n, n[0] * q[0] + n[1] * q[1] + n[2] * q[2] - h))
+            .fold((&self.planes[0].0, f64::MIN), |a, b| if b.1 > a.1 { b } else { a });
         norm([n[0] / self.scale[0], n[1] / self.scale[1], n[2] / self.scale[2]])
     }
 
     /// Mesh-space unit normals of the cutting planes (faces, chips, fracture).
     pub fn face_normals(&self) -> Vec<[f64; 3]> {
-        self.planes.iter().map(|(n, _)| norm([n[0] / self.scale[0], n[1] / self.scale[1], n[2] / self.scale[2]])).collect()
+        self.planes
+            .iter()
+            .map(|(n, _)| norm([n[0] / self.scale[0], n[1] / self.scale[1], n[2] / self.scale[2]]))
+            .collect()
     }
 }
 
@@ -81,9 +92,11 @@ impl DensityField for Boulder {
         // result a lower bound of the true distance (Lipschitz <= 1)
         let q = [p[0] / self.scale[0], p[1] / self.scale[1], p[2] / self.scale[2]];
         let smin = self.scale.iter().copied().fold(f64::MAX, f64::min);
-        let d = self.planes.iter().map(|(n, h)| n[0] * q[0] + n[1] * q[1] + n[2] * q[2] - h).fold(f64::MIN, f64::max) * smin;
+        let d = self.planes.iter().map(|(n, h)| n[0] * q[0] + n[1] * q[1] + n[2] * q[2] - h).fold(f64::MIN, f64::max)
+            * smin;
         // weathering roughness: small, so faces stay readable as flat fractures
-        d + 0.004 * perlin3([p[0] * 7.0, p[1] * 7.0, p[2] * 7.0], self.seed + 1) + 0.002 * perlin3([p[0] * 19.0, p[1] * 19.0, p[2] * 19.0], self.seed + 2)
+        d + 0.004 * perlin3([p[0] * 7.0, p[1] * 7.0, p[2] * 7.0], self.seed + 1)
+            + 0.002 * perlin3([p[0] * 19.0, p[1] * 19.0, p[2] * 19.0], self.seed + 2)
     }
 }
 
@@ -111,7 +124,14 @@ pub fn boulder_mesh(seed: u64, cells_across: u32) -> BoulderMesh {
 /// in first-use order (deterministic).
 fn keep_largest(m: &mut BrickMesh) {
     let mut id: HashMap<[i64; 3], usize> = HashMap::new();
-    let weld: Vec<usize> = m.ipos.iter().map(|p| { let n = id.len(); *id.entry(*p).or_insert(n) }).collect();
+    let weld: Vec<usize> = m
+        .ipos
+        .iter()
+        .map(|p| {
+            let n = id.len();
+            *id.entry(*p).or_insert(n)
+        })
+        .collect();
     let mut parent: Vec<usize> = (0..id.len()).collect();
     fn find(p: &mut [usize], mut x: usize) -> usize {
         while p[x] != x {
@@ -128,7 +148,8 @@ fn keep_largest(m: &mut BrickMesh) {
         }
     }
     let mut size: HashMap<usize, usize> = HashMap::new();
-    let roots: Vec<usize> = m.indices.as_chunks::<3>().0.iter().map(|t| find(&mut parent, weld[t[0] as usize])).collect();
+    let roots: Vec<usize> =
+        m.indices.as_chunks::<3>().0.iter().map(|t| find(&mut parent, weld[t[0] as usize])).collect();
     for &r in &roots {
         *size.entry(r).or_default() += 1;
     }

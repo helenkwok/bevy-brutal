@@ -2,8 +2,8 @@
 //! [`CaveNetwork`] (tunnels, chambers, speleothems) and [`Crease`] (a test field for the
 //! sawtooth root cause). All implement LOD-aware band-limiting via `density_lod`.
 use crate::DensityField;
-use crate::noise::{fbm3, fbm3_wide, octave_weight, octave_weight_wide, perlin2, perlin2d, perlin3, rand2, soft_abs};
 use crate::ground::Ground;
+use crate::noise::{fbm3, fbm3_wide, octave_weight, octave_weight_wide, perlin2, perlin2d, perlin3, rand2, soft_abs};
 use std::cell::RefCell;
 use std::sync::Arc;
 
@@ -61,7 +61,8 @@ const RELIEF_M: f64 = 2300.0;
 const LOW_MAX: f64 = 0.28 * 1.5;
 /// Sum of the gully octave amplitudes (each term is in [-1, 1]).
 /// Gully octaves (wavelength m, depth m): 420 m and 170 m spur/gully systems shape whole faces.
-const GULLY_OCTAVES: [(f64, f64); 6] = [(420.0, 24.0), (170.0, 10.0), (64.0, 3.5), (27.0, 1.4), (11.0, 0.6), (4.6, 0.25)];
+const GULLY_OCTAVES: [(f64, f64); 6] =
+    [(420.0, 24.0), (170.0, 10.0), (64.0, 3.5), (27.0, 1.4), (11.0, 0.6), (4.6, 0.25)];
 const GULLY_MAX: f64 = {
     let mut s = 0.0;
     let mut i = 0;
@@ -167,7 +168,11 @@ impl Alpine {
         let u = x + 1100.0 * warp(6000.0, sd + 11);
         let v = z + 1100.0 * warp(6000.0, sd + 23);
         // massif mask: where the big ranges are (low frequency), so there are real lowlands too
-        let mass = smoothstep(-0.6, 0.6, perlin2(x / 14000.0, z / 14000.0, sd + 5) + 0.4 * perlin2(x / 5000.0, z / 5000.0, sd + 6));
+        let mass = smoothstep(
+            -0.6,
+            0.6,
+            perlin2(x / 14000.0, z / 14000.0, sd + 5) + 0.4 * perlin2(x / 5000.0, z / 5000.0, sd + 6),
+        );
         // ridged multifractal (Musgrave) with derivative dampening (slopes erode: detail is
         // suppressed where the accumulated gradient is large, valley floors stay smooth).
         // Creases softened to >= 3 cells at the sampled LOD (sawtooth fix).
@@ -194,7 +199,11 @@ impl Alpine {
             // flat-topped wall. Independent non-ridged crest modulation on the big octaves turns
             // each crest line into peaks and saddles (stays <= 1, so the bound holds).
             let crest = if o < 3 {
-                let m = perlin2(u / (2600.0 * 0.6f64.powi(o as i32)) + 5.3, v / (2600.0 * 0.6f64.powi(o as i32)), sd + 300 + o);
+                let m = perlin2(
+                    u / (2600.0 * 0.6f64.powi(o as i32)) + 5.3,
+                    v / (2600.0 * 0.6f64.powi(o as i32)),
+                    sd + 300 + o,
+                );
                 0.3 + 0.7 * smoothstep(-0.55, 0.55, m)
             } else {
                 1.0
@@ -215,7 +224,8 @@ impl Alpine {
         // power curve: sharp peaks, broad valleys. The massif mask adds *uplift* and only mildly
         // scales relief: multiplying relief by a mask made a long escarpment whose rim sat at a
         // near-constant height (the "range clipped flat" wall).
-        let low = 0.18 * perlin2(x / 3000.0, z / 3000.0, sd + 9) + 0.1 * perlin2(x / 900.0, z / 900.0, sd + 10) * octave_weight_wide(900.0, cell);
+        let low = 0.18 * perlin2(x / 3000.0, z / 3000.0, sd + 9)
+            + 0.1 * perlin2(x / 900.0, z / 900.0, sd + 10) * octave_weight_wide(900.0, cell);
         BASE_M + LOW_M * low + UPLIFT_M * mass + RELIEF_M * h.powf(1.6) * (0.55 + 0.45 * mass)
     }
 
@@ -249,7 +259,8 @@ impl Alpine {
             let (dx, dz) = (dx0 * cs - dz0 * sn, dx0 * sn + dz0 * cs);
             let (px, pz) = (-dz, dx); // across-slope direction
             // some slopes are deeply incised, others smooth
-            let incise = 0.35 + 0.9 * smoothstep(-0.45, 0.55, perlin2(x / (3.3 * lam) - 1.7, z / (3.3 * lam) + 2.9, so + 4));
+            let incise =
+                0.35 + 0.9 * smoothstep(-0.45, 0.55, perlin2(x / (3.3 * lam) - 1.7, z / (3.3 * lam) + 2.9, so + 4));
             let (cx, cz) = ((wx / lam).floor() as i64, (wz / lam).floor() as i64);
             let (mut acc, mut ws) = (0.0, 0.0);
             // compactly supported window of radius 1.5 lam over a 5 x 5 neighbourhood: any
@@ -286,7 +297,8 @@ impl Alpine {
     /// Returns a value in [0, CRAG_MAX]; band-limited, so far rings get only the big teeth.
     fn crags(&self, x: f64, z: f64, b: f64, cell: f64) -> f64 {
         let sd = self.seed + 1400;
-        let mask = smoothstep(1050.0, 1650.0, b) * (0.55 + 0.45 * smoothstep(-0.4, 0.4, perlin2(x / 2300.0, z / 2300.0, sd)));
+        let mask =
+            smoothstep(1050.0, 1650.0, b) * (0.55 + 0.45 * smoothstep(-0.4, 0.4, perlin2(x / 2300.0, z / 2300.0, sd)));
         if mask <= 0.0 {
             return 0.0;
         }
@@ -426,7 +438,9 @@ impl Alpine {
         // lower edge clamped to >= 0: with sharp > 0.3 (cells >= ~2.2 m) the lift was already
         // non-zero at mask 0, where the `t <= 0` early return cut it off (rim jump up to ~1.8 m
         // around every outcrop at far LODs)
-        let lift = |m: f64, sharp: f64| smoothstep((0.3 - sharp).max(0.0), 0.3 + sharp, m) * (0.6 + 0.4 * smoothstep(0.3, 0.9, m));
+        let lift = |m: f64, sharp: f64| {
+            smoothstep((0.3 - sharp).max(0.0), 0.3 + sharp, m) * (0.6 + 0.4 * smoothstep(0.3, 0.9, m))
+        };
         // block (i, j): lift from the mask at its centre (solve the 2 x 2 joint basis), random step
         let blk = |i: i64, j: i64| {
             let (a0, a1) = ((i as f64 + 0.5) * sp[0], (j as f64 + 0.5) * sp[1]);
@@ -447,7 +461,9 @@ impl Alpine {
         // the smooth fallback (coarse LODs, where the joint lattice fades) would be an even
         // TOR_BLOCK plateau, i.e. flat-topped boxes at mid distance: give it uneven tops
         // (<= 1, so the bound holds), the 13 m term only where the LOD resolves it
-        let uneven = (perlin2(p[0] / 31.0, p[2] / 31.0, sd + 13) + 0.6 * octave_weight_wide(26.0, cell) * perlin2(p[0] / 13.0, p[2] / 13.0, sd + 14)).clamp(-1.0, 1.0);
+        let uneven = (perlin2(p[0] / 31.0, p[2] / 31.0, sd + 13)
+            + 0.6 * octave_weight_wide(26.0, cell) * perlin2(p[0] / 13.0, p[2] / 13.0, sd + 14))
+        .clamp(-1.0, 1.0);
         let smooth = lift(t, hw) * (0.74 + 0.26 * uneven);
         // blocks end with the mask: a block whose centre is inside the outcrop still had its
         // full lift where the mask (and the `t <= 0` early return) reached 0 (rim jump)
@@ -456,8 +472,13 @@ impl Alpine {
         let core = TOR_BLOCK * cw;
         // per-block random steps; bedding gives stacked slabs
         let r = rstep + 0.4 * (rand2(id[0] ^ id[2], id[1], sd + 9) - 0.5) * winr;
-        let joints = t.max(smooth) * (TOR_CRACK * crack + TOR_STEP * 2.0 / 1.4 * r * octave_weight_wide(15.0, cell)).clamp(-TOR_STEP, TOR_CRACK + TOR_STEP);
-        TorParts { delta: joints - core, info: TorInfo { rock: (cw / 0.6).clamp(0.0, 1.0).max(t.min(1.0) * 0.5), crack: near } }
+        let joints = t.max(smooth)
+            * (TOR_CRACK * crack + TOR_STEP * 2.0 / 1.4 * r * octave_weight_wide(15.0, cell))
+                .clamp(-TOR_STEP, TOR_CRACK + TOR_STEP);
+        TorParts {
+            delta: joints - core,
+            info: TorInfo { rock: (cw / 0.6).clamp(0.0, 1.0).max(t.min(1.0) * 0.5), crack: near },
+        }
     }
 
     #[doc(hidden)]
@@ -476,7 +497,9 @@ impl Alpine {
         // grounded and ungrounded fields must not share cache entries
         let salt = if self.ground.is_some() { 0x6772_6f75_6e64_0000 } else { 0 };
         let key = (x.to_bits(), z.to_bits(), cell.to_bits() ^ salt);
-        let slot = ((key.0.wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ key.1.wrapping_mul(0xC2B2_AE3D_27D4_EB4F) ^ key.2) >> 51) as usize & (CACHE - 1);
+        let slot = ((key.0.wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ key.1.wrapping_mul(0xC2B2_AE3D_27D4_EB4F) ^ key.2)
+            >> 51) as usize
+            & (CACHE - 1);
         if let Some(v) = COLS.with(|c| {
             let c = c.borrow();
             let e = &c[slot];
@@ -515,9 +538,15 @@ impl Alpine {
     /// Rigorous (lo, hi) bounds of the solid surface height anywhere, any filter level:
     /// meshed regions must span them vertically or peaks get cut flat at the region top.
     pub fn height_bounds(&self) -> (f64, f64) {
-        let (lo, hi) = (BASE_M - LOW_M * LOW_MAX - GULLY_MAX - OVERHANG_MAX, BASE_M + LOW_M * LOW_MAX + UPLIFT_M + RELIEF_M + GULLY_MAX + CRAG_MAX + TOR_LIFT + OVERHANG_MAX);
+        let (lo, hi) = (
+            BASE_M - LOW_M * LOW_MAX - GULLY_MAX - OVERHANG_MAX,
+            BASE_M + LOW_M * LOW_MAX + UPLIFT_M + RELIEF_M + GULLY_MAX + CRAG_MAX + TOR_LIFT + OVERHANG_MAX,
+        );
         match &self.ground {
-            Some(g) => (lo.min(g.h_min - GULLY_MAX - OVERHANG_MAX), hi.max(g.h_max + GULLY_MAX + CRAG_MAX + TOR_LIFT + OVERHANG_MAX)),
+            Some(g) => (
+                lo.min(g.h_min - GULLY_MAX - OVERHANG_MAX),
+                hi.max(g.h_max + GULLY_MAX + CRAG_MAX + TOR_LIFT + OVERHANG_MAX),
+            ),
             None => (lo, hi),
         }
     }
@@ -557,7 +586,8 @@ impl Alpine {
             // the ledge underside drops back to 0 over >= 0.42 m (>= 1.5 cells): the bare
             // sawtooth was a 1.6 m density jump at every stratum boundary
             let e = (1.5 * cell / 7.0).clamp(0.06, 0.35);
-            let ledge = 1.6 * octave_weight_wide(7.0, cell) * smoothstep(0.55, 0.95, f) * (1.0 - smoothstep(1.0 - e, 1.0, f));
+            let ledge =
+                1.6 * octave_weight_wide(7.0, cell) * smoothstep(0.55, 0.95, f) * (1.0 - smoothstep(1.0 - e, 1.0, f));
             let rough = 1.3 * fbm3_wide(p, 9.0, 3, cell, self.seed + 333);
             // vertical joints: ribs and chimneys (stretched ridged noise, crease softened)
             let jw = octave_weight_wide(14.0, cell);
@@ -675,10 +705,19 @@ impl CaveNetwork {
                 let big = ceil - floor > 6.0;
                 // irregular cross-section and drip rings: radius modulated around and along
                 let wob = 1.0
-                    + 0.22 * perlin2(ang.cos() * 1.3 + ix as f64 * 3.1, p[1] * 1.7, self.seed + 45) * octave_weight(0.3, cell)
-                    + 0.10 * perlin2(ang.sin() * 2.0 + iz as f64, p[1] * 6.0, self.seed + 46) * octave_weight(0.12, cell);
+                    + 0.22
+                        * perlin2(ang.cos() * 1.3 + ix as f64 * 3.1, p[1] * 1.7, self.seed + 45)
+                        * octave_weight(0.3, cell)
+                    + 0.10
+                        * perlin2(ang.sin() * 2.0 + iz as f64, p[1] * 6.0, self.seed + 46)
+                        * octave_weight(0.12, cell);
                 // stalactite
-                let len = (if big { 1.2 + 3.8 * rand2(ix, iz, self.seed + 43) } else { 0.3 + 0.9 * rand2(ix, iz, self.seed + 43) }).max(cell * 3.0);
+                let len = (if big {
+                    1.2 + 3.8 * rand2(ix, iz, self.seed + 43)
+                } else {
+                    0.3 + 0.9 * rand2(ix, iz, self.seed + 43)
+                })
+                .max(cell * 3.0);
                 let rb = (len * (0.15 + 0.10 * rand2(ix, iz, self.seed + 44))).max(cell * 1.5);
                 let tip = ceil - len;
                 let t = ((p[1] - tip) / len).clamp(0.0, 1.5);
@@ -713,7 +752,8 @@ impl CaveNetwork {
         let bumps = 0.45 * fbm3(p, 3.2, 5, cell, sd + 20);
         // fractured rock: ridged creases (soft-abs, >= 3 cells) at ~0.7 m
         let fr = perlin3([p[0] / 0.7, p[1] / 0.45, p[2] / 0.7], sd + 23);
-        let fracture = 0.07 * octave_weight(0.45, cell) * (1.0 - soft_abs(fr, crate::fields::crease_width(cell, 0.0) / 0.35));
+        let fracture =
+            0.07 * octave_weight(0.45, cell) * (1.0 - soft_abs(fr, crate::fields::crease_width(cell, 0.0) / 0.35));
         let flute = 0.16 * octave_weight(0.8, cell) * perlin3([p[0] / 0.8, p[1] / 4.0, p[2] / 0.8], sd + 21);
         let sy = p[1] / 0.75 + 0.6 * perlin2(p[0] / 9.0, p[2] / 9.0, sd + 22);
         let strata = 0.13 * octave_weight(0.75, cell) * smoothstep(0.6, 0.95, sy - sy.floor());

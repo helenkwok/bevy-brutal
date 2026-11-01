@@ -16,7 +16,13 @@ fn backend(w: u32, h: u32, max_instances: usize) -> Option<AshBackend> {
 }
 
 fn backend_fif(w: u32, h: u32, max_instances: usize, frames_in_flight: usize) -> Option<AshBackend> {
-    backend_cfg(BackendConfig { max_instances, extent: (w, h), validation: true, frames_in_flight, ..Default::default() })
+    backend_cfg(BackendConfig {
+        max_instances,
+        extent: (w, h),
+        validation: true,
+        frames_in_flight,
+        ..Default::default()
+    })
 }
 
 fn backend_cfg(cfg: BackendConfig) -> Option<AshBackend> {
@@ -55,10 +61,14 @@ fn gpu_visible_count_matches_cpu_reference() {
     for (frame, &(n, seed)) in cases.iter().enumerate() {
         let inst = random_scene(n, seed, meshes.len() as u32, 0.05);
         let vp = demo_view_proj(n, 320.0 / 240.0);
-        b.render(&FrameSnapshot { view_proj: vp.to_cols_array_2d(), instances: &inst, frame_index: frame as u64 }).unwrap();
+        b.render(&FrameSnapshot { view_proj: vp.to_cols_array_2d(), instances: &inst, frame_index: frame as u64 })
+            .unwrap();
         let st = b.finish().unwrap();
         let reference = cpu_cull(&inst, &meshes, vp);
-        eprintln!("n={n:>6} gpu_visible={:>6} cpu_inside={:>6} ambiguous={} draws={}", st.visible, reference.inside, reference.ambiguous, st.draws);
+        eprintln!(
+            "n={n:>6} gpu_visible={:>6} cpu_inside={:>6} ambiguous={} draws={}",
+            st.visible, reference.inside, reference.ambiguous, st.draws
+        );
         assert!(reference.accepts(st.visible as usize), "n={n}: GPU {} vs CPU {:?}", st.visible, reference);
         assert!(st.draws as usize <= meshes.len());
         assert_eq!(st.instances as usize, n);
@@ -119,7 +129,9 @@ fn timestamps_report_cull_and_draw_times() {
     let vp = demo_view_proj(inst.len(), 320.0 / 240.0);
     let mut retired = Vec::new();
     for f in 0..6 {
-        if let Some(s) = b.render(&FrameSnapshot { view_proj: vp.to_cols_array_2d(), instances: &inst, frame_index: f }).unwrap() {
+        if let Some(s) =
+            b.render(&FrameSnapshot { view_proj: vp.to_cols_array_2d(), instances: &inst, frame_index: f }).unwrap()
+        {
             retired.push(s);
         }
     }
@@ -143,7 +155,11 @@ fn rejects_too_many_instances() {
     let _g = GPU.lock().unwrap_or_else(|e| e.into_inner());
     let Some(mut b) = backend(64, 64, 100) else { return };
     let inst = random_scene(101, 1, 4, 0.0);
-    let r = b.submit(&FrameSnapshot { view_proj: glam::Mat4::IDENTITY.to_cols_array_2d(), instances: &inst, frame_index: 0 });
+    let r = b.submit(&FrameSnapshot {
+        view_proj: glam::Mat4::IDENTITY.to_cols_array_2d(),
+        instances: &inst,
+        frame_index: 0,
+    });
     assert!(matches!(r, Err(render_ash::BackendError::TooManyInstances { .. })));
     drop(b);
     assert_no_validation_errors();
@@ -188,7 +204,23 @@ fn scan_sizes_match(b: &mut AshBackend) {
     let tile = render_ash::SCAN_TILE as usize;
     // 0, 1, non-power-of-two, exactly one tile, one-past (2 levels), multi-workgroup, 1M (2 levels,
     // 1024 tiles), 1M+1 (3 levels).
-    let mut sizes = vec![0, 1, 2, 3, 7, 255, 1000, tile - 1, tile, tile + 1, 3 * tile + 17, 65_537, 300_001, 1 << 20, (1 << 20) + 1];
+    let mut sizes = vec![
+        0,
+        1,
+        2,
+        3,
+        7,
+        255,
+        1000,
+        tile - 1,
+        tile,
+        tile + 1,
+        3 * tile + 17,
+        65_537,
+        300_001,
+        1 << 20,
+        (1 << 20) + 1,
+    ];
     let mut rng = 0x9E37_79B9_7F4A_7C15u64;
     for _ in 0..6 {
         sizes.push((xorshift(&mut rng) % 200_000) as usize);
@@ -244,7 +276,14 @@ fn many_meshes_case(mut b: AshBackend) {
             }
             seen.iter().filter(|&&x| x).count()
         };
-        eprintln!("{:?} meshes=3000 n={n:>6} gpu_visible={} cpu_inside={} ambiguous={} draws={}", b.scan_path(), st.visible, r.inside, r.ambiguous, st.draws);
+        eprintln!(
+            "{:?} meshes=3000 n={n:>6} gpu_visible={} cpu_inside={} ambiguous={} draws={}",
+            b.scan_path(),
+            st.visible,
+            r.inside,
+            r.ambiguous,
+            st.draws
+        );
         assert!(r.accepts(st.visible as usize), "n={n}: GPU {} vs CPU {r:?}", st.visible);
         assert!(st.draws as usize <= used);
         if n >= 2500 {
@@ -273,18 +312,23 @@ fn frames_overlap_and_stay_correct() {
         let Some(mut b) = backend_fif(320, 240, 120_000, fif) else { return };
         assert_eq!(b.frames_in_flight(), fif);
         let meshes = b.mesh_table().to_vec();
-        let scenes: Vec<_> = (0..9u64).map(|k| random_scene(60_000 + 7_000 * k as usize, 100 + k, meshes.len() as u32, 0.03)).collect();
+        let scenes: Vec<_> =
+            (0..9u64).map(|k| random_scene(60_000 + 7_000 * k as usize, 100 + k, meshes.len() as u32, 0.03)).collect();
         let vp = |n: usize| demo_view_proj(n, 320.0 / 240.0);
         let mut stats: Vec<FrameStats> = Vec::new();
         let render = |b: &mut AshBackend, k: usize| {
             let s = &scenes[k];
-            b.render(&FrameSnapshot { view_proj: vp(s.len()).to_cols_array_2d(), instances: s, frame_index: k as u64 }).unwrap()
+            b.render(&FrameSnapshot { view_proj: vp(s.len()).to_cols_array_2d(), instances: s, frame_index: k as u64 })
+                .unwrap()
         };
 
         // Gated phase: frame 1 waits on `gate`.
-        let mut tci = vk::SemaphoreTypeCreateInfo::default().semaphore_type(vk::SemaphoreType::TIMELINE).initial_value(0);
+        let mut tci =
+            vk::SemaphoreTypeCreateInfo::default().semaphore_type(vk::SemaphoreType::TIMELINE).initial_value(0);
         // SAFETY: device is live; timeline semaphores are enabled by the backend.
-        let gate = unsafe { b.ctx.device.create_semaphore(&vk::SemaphoreCreateInfo::default().push_next(&mut tci), None).unwrap() };
+        let gate = unsafe {
+            b.ctx.device.create_semaphore(&vk::SemaphoreCreateInfo::default().push_next(&mut tci), None).unwrap()
+        };
         b.gate_next_submit(gate, 1);
         stats.extend(render(&mut b, 0));
         for k in 1..fif {
@@ -320,7 +364,9 @@ fn frames_overlap_and_stay_correct() {
             .windows(2)
             .filter(|w| matches!((w[1].gpu_begin_ns, w[0].gpu_end_ns), (Some(b1), Some(e0)) if b1 < e0))
             .count();
-        eprintln!("F={fif}: frames {held:?} in flight together | in_flight_at_submit={in_flight:?} | GPU timestamp overlap {gpu_overlap}/8 (driver-dependent)");
+        eprintln!(
+            "F={fif}: frames {held:?} in flight together | in_flight_at_submit={in_flight:?} | GPU timestamp overlap {gpu_overlap}/8 (driver-dependent)"
+        );
         drop(b);
         assert_no_validation_errors();
     }
@@ -330,7 +376,16 @@ fn frames_overlap_and_stay_correct() {
 fn rejects_bad_frames_in_flight() {
     let _g = GPU.lock().unwrap_or_else(|e| e.into_inner());
     for fif in [0usize, 1, 4] {
-        let r = AshBackend::new(BackendConfig { max_instances: 16, extent: (16, 16), validation: false, frames_in_flight: fif, ..Default::default() }, None);
+        let r = AshBackend::new(
+            BackendConfig {
+                max_instances: 16,
+                extent: (16, 16),
+                validation: false,
+                frames_in_flight: fif,
+                ..Default::default()
+            },
+            None,
+        );
         assert!(matches!(r, Err(render_ash::BackendError::BadConfig(_))), "fif={fif}");
     }
 }
@@ -344,7 +399,11 @@ fn terrain_eviction_waits_for_retired_frames() {
     use render_ash::{TerrainGpuConfig, UploadOutcome};
     let _g = GPU.lock().unwrap_or_else(|e| e.into_inner());
     let Some(mut b) = backend(160, 120, 16) else { return };
-    b.enable_terrain(TerrainGpuConfig { slots: 3, staging_bytes: 1 << 20, ..Default::default() }, &terrain::grid_indices()).unwrap();
+    b.enable_terrain(
+        TerrainGpuConfig { slots: 3, staging_bytes: 1 << 20, ..Default::default() },
+        &terrain::grid_indices(),
+    )
+    .unwrap();
     let p = terrain::NoiseParams::default();
     let chunk = |c: [i32; 2]| {
         let req = terrain::ChunkRequest { coord: c, lod: 0, seed: 3 };
@@ -354,9 +413,15 @@ fn terrain_eviction_waits_for_retired_frames() {
         terrain::mesh_chunk(&req, &hm, &arena).unwrap().vertices.to_vec()
     };
     let vp = (render_ash::cull::vk_perspective(1.2, 160.0 / 120.0, 0.5, 1000.0)
-        * render_ash::cull::look_at(glam::Vec3::new(64.0, 140.0, -50.0), glam::Vec3::new(64.0, 0.0, 64.0), glam::Vec3::Y))
+        * render_ash::cull::look_at(
+            glam::Vec3::new(64.0, 140.0, -50.0),
+            glam::Vec3::new(64.0, 0.0, 64.0),
+            glam::Vec3::Y,
+        ))
     .to_cols_array_2d();
-    let frame = |b: &mut AshBackend, i: u64| b.render(&FrameSnapshot { view_proj: vp, instances: &[], frame_index: i }).unwrap();
+    let frame = |b: &mut AshBackend, i: u64| {
+        b.render(&FrameSnapshot { view_proj: vp, instances: &[], frame_index: i }).unwrap()
+    };
     let (a, bb, c, d) = ([0, 0], [1, 0], [0, 1], [1, 1]);
     for k in [a, bb, c] {
         assert!(matches!(b.upload_terrain_chunk(k, &chunk(k)).unwrap(), UploadOutcome::Staged { evicted: None, .. }));
@@ -366,7 +431,9 @@ fn terrain_eviction_waits_for_retired_frames() {
 
     let mut tci = vk::SemaphoreTypeCreateInfo::default().semaphore_type(vk::SemaphoreType::TIMELINE).initial_value(0);
     // SAFETY: device live; timeline semaphores enabled.
-    let gate = unsafe { b.ctx.device.create_semaphore(&vk::SemaphoreCreateInfo::default().push_next(&mut tci), None).unwrap() };
+    let gate = unsafe {
+        b.ctx.device.create_semaphore(&vk::SemaphoreCreateInfo::default().push_next(&mut tci), None).unwrap()
+    };
     b.gate_next_submit(gate, 1);
     frame(&mut b, 0); // frame 1: copies a, b, c; draws a. Held by the gate.
     assert!(b.upload_terrain_chunk(d, &chunk(d)).is_err(), "all slots were written by the unretired frame 1");
@@ -380,7 +447,9 @@ fn terrain_eviction_waits_for_retired_frames() {
     unsafe { b.ctx.device.destroy_semaphore(gate, None) };
 
     match b.upload_terrain_chunk(d, &chunk(d)).unwrap() {
-        UploadOutcome::Staged { evicted: Some(e), .. } => assert!(e == bb || e == c, "evicted {e:?}; must not evict drawn chunk a"),
+        UploadOutcome::Staged { evicted: Some(e), .. } => {
+            assert!(e == bb || e == c, "evicted {e:?}; must not evict drawn chunk a")
+        }
         o => panic!("expected an eviction, got {o:?}"),
     }
     assert!(b.terrain_is_resident(a) && b.terrain_is_resident(d));
@@ -413,10 +482,26 @@ fn gpu_transvoxel_matches_cpu_exactly() {
     type Case = (&'static str, Box<dyn DensityField>, Box<dyn LodLayout>);
     let cases: Vec<Case> = vec![
         ("uniform", Box::new(BlobScene { radius: 9.0, seed: 3 }), Box::new(UniformLod(0))),
-        ("slab", Box::new(BlobScene { radius: 9.0, seed: 3 }), Box::new(SlabLayout { axis: 1, split: 0, lod_below: 1, lod_above: 0 })),
-        ("shells", Box::new(BlobScene { radius: 9.0, seed: 3 }), Box::new(ShellLayout::camera_centred(&cfg.grid, [5, -3, 7], &[1, 1]))),
-        ("fuzz-slab", Box::new(Adversarial { seed: 1, voxel_m: 0.25, radius_m: 7.0 }), Box::new(SlabLayout { axis: 1, split: 0, lod_below: 1, lod_above: 0 })),
-        ("fuzz-shells", Box::new(Adversarial { seed: 4, voxel_m: 0.25, radius_m: 7.0 }), Box::new(ShellLayout::camera_centred(&cfg.grid, [0, 0, 0], &[1]))),
+        (
+            "slab",
+            Box::new(BlobScene { radius: 9.0, seed: 3 }),
+            Box::new(SlabLayout { axis: 1, split: 0, lod_below: 1, lod_above: 0 }),
+        ),
+        (
+            "shells",
+            Box::new(BlobScene { radius: 9.0, seed: 3 }),
+            Box::new(ShellLayout::camera_centred(&cfg.grid, [5, -3, 7], &[1, 1])),
+        ),
+        (
+            "fuzz-slab",
+            Box::new(Adversarial { seed: 1, voxel_m: 0.25, radius_m: 7.0 }),
+            Box::new(SlabLayout { axis: 1, split: 0, lod_below: 1, lod_above: 0 }),
+        ),
+        (
+            "fuzz-shells",
+            Box::new(Adversarial { seed: 4, voxel_m: 0.25, radius_m: 7.0 }),
+            Box::new(ShellLayout::camera_centred(&cfg.grid, [0, 0, 0], &[1])),
+        ),
     ];
     let r = 14.0 / 0.25;
     let region = ([-(r as i64) / 64 * 64 - 64; 3], [(r as i64) / 64 * 64 + 64; 3]);
@@ -493,7 +578,8 @@ fn gpu_tq_decode_matches_cpu_exactly() {
         .collect();
     // adversarial: full +-DQ_MAX range, alternating extremes (exercises the clamp)
     let m = 19usize.pow(3);
-    bricks.push((0..m).map(|k| if (k * 2_654_435_761) % 7 < 3 { DQ_MAX } else { -DQ_MAX + (k as i32 % 1000) }).collect());
+    bricks
+        .push((0..m).map(|k| if (k * 2_654_435_761) % 7 < 3 { DQ_MAX } else { -DQ_MAX + (k as i32 % 1000) }).collect());
     let rot = Rotation::new();
     for bits in 1..=4 {
         let blobs: Vec<Vec<u8>> = bricks.iter().map(|d| tq::encode_values(d, 16, bits, &rot)).collect();
@@ -547,9 +633,17 @@ fn gpu_mesher_on_banded_payload_matches_full() {
     let buf = AlignedBytes::from_slice(&w.finish());
     let f = File::open_deep(buf.as_slice(), Limits::default()).unwrap();
     let banded: Vec<_> = (0..src.len()).map(|i| f.decode_mesh_samples(i).unwrap().unwrap()).collect();
-    let full_jobs: Vec<VoxelJob<'_>> = src.iter().map(|(s, m, fi)| VoxelJob { samples: s, transitions: *m, finer: *fi }).collect();
-    let band_jobs: Vec<VoxelJob<'_>> =
-        banded.iter().zip(&src).map(|(m, (_, _, fi))| VoxelJob { samples: m.samples_for_meshing_only(), transitions: m.transitions(), finer: *fi }).collect();
+    let full_jobs: Vec<VoxelJob<'_>> =
+        src.iter().map(|(s, m, fi)| VoxelJob { samples: s, transitions: *m, finer: *fi }).collect();
+    let band_jobs: Vec<VoxelJob<'_>> = banded
+        .iter()
+        .zip(&src)
+        .map(|(m, (_, _, fi))| VoxelJob {
+            samples: m.samples_for_meshing_only(),
+            transitions: m.transitions(),
+            finer: *fi,
+        })
+        .collect();
     let (a, c) = (b.mesh_voxels_gpu(&cfg, &full_jobs).unwrap(), b.mesh_voxels_gpu(&cfg, &band_jobs).unwrap());
     assert_eq!(a.triangles, c.triangles);
     for (x, y) in a.bricks.iter().zip(&c.bricks) {
@@ -571,7 +665,9 @@ fn quality_depth_prepass_and_shadow_cache() {
     use glam::{DVec3, Mat4, Vec3};
     use lowlevel_abi::InstanceGpu;
     use render_ash::mesh::MeshInfoGpu;
-    use render_ash::quality::{InstancedSet, LOD_NONE, QParamsGpu, QVertex, QualityFrame, ShadowView, reverse_z_infinite, sun_cascade};
+    use render_ash::quality::{
+        InstancedSet, LOD_NONE, QParamsGpu, QVertex, QualityFrame, ShadowView, reverse_z_infinite, sun_cascade,
+    };
     let _g = GPU.lock().unwrap_or_else(|e| e.into_inner());
     let Some(mut b) = backend(64, 64, 16) else { return };
     let (w, h) = (192u32, 128u32);
@@ -600,13 +696,40 @@ fn quality_depth_prepass_and_shadow_cache() {
         let base = iv.len() as u32;
         let first = ii.len() as u32;
         for c in 0..8u32 {
-            let p = [if c & 1 != 0 { s } else { -s }, if c & 2 != 0 { 2.0 * s } else { 0.0 }, if c & 4 != 0 { s } else { -s }];
-            iv.push(QVertex { pos: p, nrm: Vec3::from_array(p).normalize().to_array(), attr: [1.0, 0.0, 0.0, 2.0 + k as f32] });
+            let p = [
+                if c & 1 != 0 { s } else { -s },
+                if c & 2 != 0 { 2.0 * s } else { 0.0 },
+                if c & 4 != 0 { s } else { -s },
+            ];
+            iv.push(QVertex {
+                pos: p,
+                nrm: Vec3::from_array(p).normalize().to_array(),
+                attr: [1.0, 0.0, 0.0, 2.0 + k as f32],
+            });
         }
-        for f in [[0, 2, 1], [1, 2, 3], [4, 5, 6], [5, 7, 6], [0, 1, 4], [1, 5, 4], [2, 6, 3], [3, 6, 7], [0, 4, 2], [2, 4, 6], [1, 3, 5], [3, 7, 5]] {
+        for f in [
+            [0, 2, 1],
+            [1, 2, 3],
+            [4, 5, 6],
+            [5, 7, 6],
+            [0, 1, 4],
+            [1, 5, 4],
+            [2, 6, 3],
+            [3, 6, 7],
+            [0, 4, 2],
+            [2, 4, 6],
+            [1, 3, 5],
+            [3, 7, 5],
+        ] {
             ii.extend(f.map(|v| base + v));
         }
-        meshes.push(MeshInfoGpu { index_count: 36, first_index: first, vertex_offset: 0, _pad: 0, sphere: [0.0, s, 0.0, 2.3 * s] });
+        meshes.push(MeshInfoGpu {
+            index_count: 36,
+            first_index: first,
+            vertex_offset: 0,
+            _pad: 0,
+            sphere: [0.0, s, 0.0, 2.3 * s],
+        });
     }
     let lod = vec![[1, 18f32.to_bits(), 10f32.to_bits(), 0], [LOD_NONE, 0, 0, 0]];
     let inst: Vec<InstanceGpu> = (0..40)
@@ -634,7 +757,11 @@ fn quality_depth_prepass_and_shadow_cache() {
         cells.push(cell);
         nd = f * 0.8;
     }
-    let mut p = QParamsGpu { view_proj: vp.to_cols_array_2d(), inv_dir: cull_vp.inverse().to_cols_array_2d(), ..Default::default() };
+    let mut p = QParamsGpu {
+        view_proj: vp.to_cols_array_2d(),
+        inv_dir: cull_vp.inverse().to_cols_array_2d(),
+        ..Default::default()
+    };
     p.cam_world = [origin.x as f32, origin.y as f32, origin.z as f32, fov / h as f32];
     p.sun_dir = [sun.x, sun.y, sun.z, 5.0];
     p.sun_color = [1.0, 0.9, 0.8, 0.6];
@@ -653,7 +780,16 @@ fn quality_depth_prepass_and_shadow_cache() {
             shadow_res: res,
             shadows: &shadows,
             spot_shadow: false,
-            instanced: Some(InstancedSet { vertices: &iv, indices: &ii, meshes: &meshes, instances: &inst, cull_view_proj: cull_vp, lod: &lod, impostor_first: 2, atlas: None }),
+            instanced: Some(InstancedSet {
+                vertices: &iv,
+                indices: &ii,
+                meshes: &meshes,
+                instances: &inst,
+                cull_view_proj: cull_vp,
+                lod: &lod,
+                impostor_first: 2,
+                atlas: None,
+            }),
             atmosphere: false,
             terrain_chunks: &[],
             shadow_slices: &[],
@@ -664,7 +800,10 @@ fn quality_depth_prepass_and_shadow_cache() {
         b.render_quality(&frame).expect("quality frame")
     };
     let (reference, t0) = render(&mut b, false, &[]);
-    assert!(t0.fading_instances > 0 && t0.visible_instances > t0.fading_instances, "the scene exercises whole and crossfading (dithered) draws: {t0:?}");
+    assert!(
+        t0.fading_instances > 0 && t0.visible_instances > t0.fading_instances,
+        "the scene exercises whole and crossfading (dithered) draws: {t0:?}"
+    );
     assert!(reference.chunks(4).any(|px| px[..3] != reference[..3]), "non-uniform image");
     let (img, t) = render(&mut b, true, &[]);
     assert_eq!(t.cached_cascades, 0);
@@ -702,7 +841,8 @@ fn quality_depth_prepass_and_shadow_cache() {
     assert!(moved.is_some(), "moving the camera by a texel changes the cell");
     assert!(cells.iter().all(|c| c.iter().all(|&x| x != i64::MIN)));
     // the closed-form radius does not depend on the view direction
-    let (_, t2, _) = sun_cascade(origin, Vec3::new(0.7, 0.1, 0.3).normalize(), fov, aspect, 120.0 * 0.8, 400.0, sun, res, 200.0);
+    let (_, t2, _) =
+        sun_cascade(origin, Vec3::new(0.7, 0.1, 0.3).normalize(), fov, aspect, 120.0 * 0.8, 400.0, sun, res, 200.0);
     assert_eq!(texel, t2);
     drop(b);
     assert_no_validation_errors();
@@ -717,7 +857,9 @@ fn quality_card_depth_impostor_prepass() {
     use glam::{Mat4, Vec3};
     use lowlevel_abi::InstanceGpu;
     use render_ash::mesh::MeshInfoGpu;
-    use render_ash::quality::{InstancedSet, LOD_NONE, QParamsGpu, QVertex, QualityFrame, ShadowView, reverse_z_infinite, sun_cascade};
+    use render_ash::quality::{
+        InstancedSet, LOD_NONE, QParamsGpu, QVertex, QualityFrame, ShadowView, reverse_z_infinite, sun_cascade,
+    };
     let _g = GPU.lock().unwrap_or_else(|e| e.into_inner());
     let Some(mut b) = backend(64, 64, 512) else { return };
     let (w, h) = (256u32, 128u32);
@@ -753,14 +895,26 @@ fn quality_card_depth_impostor_prepass() {
     }
     let var = render_ash::impostor::bake_variant(&iv, &ii);
     let cone_sphere = [0.0, 0.5, 0.0, 0.6];
-    let mut meshes = vec![MeshInfoGpu { index_count: ii.len() as u32, first_index: 0, vertex_offset: 0, _pad: 0, sphere: cone_sphere }];
+    let mut meshes = vec![MeshInfoGpu {
+        index_count: ii.len() as u32,
+        first_index: 0,
+        vertex_offset: 0,
+        _pad: 0,
+        sphere: cone_sphere,
+    }];
     let base = iv.len() as i32;
     let first = ii.len() as u32;
     for (x, y) in [(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)] {
         iv.push(QVertex { pos: [x, y, 0.0], nrm: [0.0, 0.0, 1.0], attr: [0.0, 0.0, 0.0, 2.0] });
     }
     ii.extend([0, 1, 2, 0, 2, 3]);
-    meshes.push(MeshInfoGpu { index_count: 6, first_index: first, vertex_offset: base, _pad: 0, sphere: [var.centre.x, var.centre.y, var.centre.z, var.radius] });
+    meshes.push(MeshInfoGpu {
+        index_count: 6,
+        first_index: first,
+        vertex_offset: base,
+        _pad: 0,
+        sphere: [var.centre.x, var.centre.y, var.centre.z, var.radius],
+    });
     let atlas = render_ash::impostor::atlas_bytes(std::slice::from_ref(&var));
     // cone -> impostor at 30 m with a 12 m crossfade; exact-depth impostors to 60 m
     let lod = vec![[1, 30f32.to_bits(), 12f32.to_bits(), 0], [LOD_NONE, 0, 0, 60f32.to_bits()]];
@@ -769,7 +923,9 @@ fn quality_card_depth_impostor_prepass() {
         .map(|k| {
             let (x, z) = (((k * 37) % 41) as f32 * 1.7 - 34.0 + 0.3 * (k % 7) as f32, -12.0 - (k / 5) as f32 * 1.0);
             let s = 6.0 + (k % 5) as f32;
-            let m = Mat4::from_translation(Vec3::new(x, -2.0, z)) * Mat4::from_rotation_y(k as f32 * 0.7) * Mat4::from_scale(Vec3::splat(s));
+            let m = Mat4::from_translation(Vec3::new(x, -2.0, z))
+                * Mat4::from_rotation_y(k as f32 * 0.7)
+                * Mat4::from_scale(Vec3::splat(s));
             InstanceGpu { model: m.to_cols_array_2d(), mesh_id: 0, material_id: 0, _pad: [0; 2] }
         })
         .collect();
@@ -789,7 +945,11 @@ fn quality_card_depth_impostor_prepass() {
         shadows.push(ShadowView { view_proj: m, texel });
         nd = f * 0.8;
     }
-    let mut p = QParamsGpu { view_proj: vp.to_cols_array_2d(), inv_dir: cull_vp.inverse().to_cols_array_2d(), ..Default::default() };
+    let mut p = QParamsGpu {
+        view_proj: vp.to_cols_array_2d(),
+        inv_dir: cull_vp.inverse().to_cols_array_2d(),
+        ..Default::default()
+    };
     p.cam_world = [origin.x as f32, origin.y as f32, origin.z as f32, fov / h as f32];
     p.sun_dir = [sun.x, sun.y, sun.z, 5.0];
     p.sun_color = [1.0, 0.9, 0.8, 0.6];
@@ -808,7 +968,16 @@ fn quality_card_depth_impostor_prepass() {
             shadow_res: res,
             shadows: &shadows,
             spot_shadow: false,
-            instanced: Some(InstancedSet { vertices: &iv, indices: &ii, meshes: &meshes, instances, cull_view_proj: cull_vp, lod: &lod, impostor_first: 1, atlas: Some((&atlas, 1)) }),
+            instanced: Some(InstancedSet {
+                vertices: &iv,
+                indices: &ii,
+                meshes: &meshes,
+                instances,
+                cull_view_proj: cull_vp,
+                lod: &lod,
+                impostor_first: 1,
+                atlas: Some((&atlas, 1)),
+            }),
             atmosphere: false,
             terrain_chunks: &[],
             shadow_slices: &[],
@@ -818,10 +987,21 @@ fn quality_card_depth_impostor_prepass() {
         };
         b.render_quality(&frame).expect("quality frame")
     };
-    let far: Vec<InstanceGpu> = inst.iter().map(|i| InstanceGpu { model: Mat4::from_translation(Vec3::new(0.0, 0.0, 5000.0)).mul_mat4(&Mat4::from_cols_array_2d(&i.model)).to_cols_array_2d(), ..*i }).collect();
+    let far: Vec<InstanceGpu> = inst
+        .iter()
+        .map(|i| InstanceGpu {
+            model: Mat4::from_translation(Vec3::new(0.0, 0.0, 5000.0))
+                .mul_mat4(&Mat4::from_cols_array_2d(&i.model))
+                .to_cols_array_2d(),
+            ..*i
+        })
+        .collect();
     let (bare, _) = render(&mut b, &far[..1], true, true);
     let (card_pre, t) = render(&mut b, &inst, true, true);
-    assert!(t.impostor_instances > 100 && t.fading_instances > 20, "the stand exercises whole, crossfading and impostor draws: {t:?}");
+    assert!(
+        t.impostor_instances > 100 && t.fading_instances > 20,
+        "the stand exercises whole, crossfading and impostor draws: {t:?}"
+    );
     let (card_nopre, _) = render(&mut b, &inst, false, true);
     let (exact_pre, _) = render(&mut b, &inst, true, false);
     let differ = |a: &[u8], c: &[u8]| a.chunks(4).zip(c.chunks(4)).filter(|(x, y)| x[..3] != y[..3]).count();
@@ -831,7 +1011,9 @@ fn quality_card_depth_impostor_prepass() {
     assert!(d * 1000 <= px, "card-depth impostor prepass changes {d} of {px} pixels");
     // coverage (pixels where the trees replace the bare ground) matches the exact-depth path
     let (cov_card, cov_exact) = (differ(&card_pre, &bare), differ(&exact_pre, &bare));
-    eprintln!("card-depth impostors: prepass diff {d} px, coverage card {cov_card} / exact {cov_exact} of {px} px, {t:?}");
+    eprintln!(
+        "card-depth impostors: prepass diff {d} px, coverage card {cov_card} / exact {cov_exact} of {px} px, {t:?}"
+    );
     assert!(cov_exact * 10 > px, "the stand covers > 10 % of the frame ({cov_exact} px)");
     assert!(cov_card.abs_diff(cov_exact) * 50 <= cov_exact, "coverage card {cov_card} vs exact {cov_exact} px");
     drop(b);

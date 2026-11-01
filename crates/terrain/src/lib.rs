@@ -37,7 +37,8 @@ impl Default for NoiseParams {
 
 #[inline]
 fn hash(x: i32, y: i32, seed: u32) -> f32 {
-    let mut h = (x as u32).wrapping_mul(0x8da6_b343) ^ (y as u32).wrapping_mul(0xd816_3841) ^ seed.wrapping_mul(0xcb1a_b31f);
+    let mut h =
+        (x as u32).wrapping_mul(0x8da6_b343) ^ (y as u32).wrapping_mul(0xd816_3841) ^ seed.wrapping_mul(0xcb1a_b31f);
     h ^= h >> 13;
     h = h.wrapping_mul(0x5bd1_e995);
     h ^= h >> 15;
@@ -250,7 +251,12 @@ pub trait SeamStrategy {
     fn name(&self) -> &'static str;
     /// Check (and, for real strategies, patch) a chunk mesh given its neighbours' LODs. May append
     /// vertices to `extra_vertices` and return chunk-specific indices; `None` = use the shared grid.
-    fn resolve(&self, req: &ChunkRequest, neighbours: NeighbourLods, extra_vertices: &mut Vec<TerrainVertex>) -> Result<Option<Vec<u32>>, SeamError>;
+    fn resolve(
+        &self,
+        req: &ChunkRequest,
+        neighbours: NeighbourLods,
+        extra_vertices: &mut Vec<TerrainVertex>,
+    ) -> Result<Option<Vec<u32>>, SeamError>;
 }
 
 /// All chunks at one LOD: neighbouring chunks share edge samples bit-for-bit, so the shared grid
@@ -263,7 +269,12 @@ impl SeamStrategy for SingleLod {
         "single-lod"
     }
 
-    fn resolve(&self, req: &ChunkRequest, neighbours: NeighbourLods, _extra: &mut Vec<TerrainVertex>) -> Result<Option<Vec<u32>>, SeamError> {
+    fn resolve(
+        &self,
+        req: &ChunkRequest,
+        neighbours: NeighbourLods,
+        _extra: &mut Vec<TerrainVertex>,
+    ) -> Result<Option<Vec<u32>>, SeamError> {
         for (edge, n) in neighbours.iter().enumerate() {
             if let Some(n) = *n
                 && n != req.lod

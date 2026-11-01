@@ -114,7 +114,13 @@ pub fn grass_patch(seed: u32, lod: usize) -> (Vec<QVertex>, Vec<u32>) {
         let out = if in_clump { (z - c.1).atan2(x - c.0) } else { face };
         let lean_dir = if in_clump { out * 0.6 + c.4 * 0.4 } else { face };
         // stems stand stiffer; tussock blades arch outward more
-        let bend = if stem || stalk { 0.25 } else if coarse { 1.3 } else { 1.0 };
+        let bend = if stem || stalk {
+            0.25
+        } else if coarse {
+            1.3
+        } else {
+            1.0
+        };
         let curve = (0.12 + 0.35 * r(k, 22)) * h * bend;
         let d = Vec3::new(lean_dir.cos(), 0.0, lean_dir.sin());
         let side = Vec3::new(face.cos(), 0.0, face.sin()).cross(Vec3::Y).normalize();
@@ -134,7 +140,13 @@ pub fn grass_patch(seed: u32, lod: usize) -> (Vec<QVertex>, Vec<u32>) {
             let n = side.cross(tan).normalize();
             let n = if n.y < 0.0 { -n } else { n };
             // leaves taper; a stem keeps its width and swells into the seed head near the top
-            let half = if stem { w * (1.0 + 1.8 * smooth(0.62, 0.8, t)) } else if stalk { w } else { w * (1.0 - 0.85 * t) };
+            let half = if stem {
+                w * (1.0 + 1.8 * smooth(0.62, 0.8, t))
+            } else if stalk {
+                w
+            } else {
+                w * (1.0 - 0.85 * t)
+            };
             // rounded normals: edges tilted +-35 deg around the blade axis
             let (nl, nr) = ((n - side * 0.7).normalize(), (n + side * 0.7).normalize());
             let ao = 0.25 + 0.75 * (t / 0.35).min(1.0).powf(0.8);
@@ -194,7 +206,15 @@ mod tests {
         for lod in 0..3 {
             let (a, ai) = grass_patch(7, lod);
             let d = digest(&a, &ai);
-            let threads: Vec<u64> = (0..4).map(|_| std::thread::spawn(move || { let (v, i) = grass_patch(7, lod); digest(&v, &i) })).map(|t| t.join().unwrap()).collect();
+            let threads: Vec<u64> = (0..4)
+                .map(|_| {
+                    std::thread::spawn(move || {
+                        let (v, i) = grass_patch(7, lod);
+                        digest(&v, &i)
+                    })
+                })
+                .map(|t| t.join().unwrap())
+                .collect();
             assert!(threads.iter().all(|&t| t == d));
             let (b, bi) = grass_patch(8, lod);
             assert_ne!(digest(&b, &bi), d);
@@ -227,7 +247,11 @@ mod tests {
                     area[lod] += a;
                 }
                 // roots (attr.y == 0) inside the tile
-                assert!(v.iter().filter(|q| q.attr[1] == 0.0).all(|q| q.pos[0].abs() <= TILE_M * 0.5 + 0.06 && q.pos[2].abs() <= TILE_M * 0.5 + 0.06));
+                assert!(
+                    v.iter()
+                        .filter(|q| q.attr[1] == 0.0)
+                        .all(|q| q.pos[0].abs() <= TILE_M * 0.5 + 0.06 && q.pos[2].abs() <= TILE_M * 0.5 + 0.06)
+                );
             }
         }
         // blades per m^2: 152 near (38 per 0.25 m^2 tile), decreasing; covered area within 40 %

@@ -17,7 +17,11 @@ fn h2(x: i64, z: i64, seed: u64) -> u64 {
 
 #[inline]
 fn h3(x: i64, y: i64, z: i64, seed: u64) -> u64 {
-    hash(seed ^ (x as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ (y as u64).wrapping_mul(0xC2B2_AE3D_27D4_EB4F) ^ (z as u64).wrapping_mul(0x1656_67B1_9E37_79F9))
+    hash(
+        seed ^ (x as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15)
+            ^ (y as u64).wrapping_mul(0xC2B2_AE3D_27D4_EB4F)
+            ^ (z as u64).wrapping_mul(0x1656_67B1_9E37_79F9),
+    )
 }
 
 /// Uniform in [0, 1) from a lattice hash (for jitter / per-cell randomness).

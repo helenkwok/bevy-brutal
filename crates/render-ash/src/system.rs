@@ -117,7 +117,15 @@ pub fn mip_chain(w: u32, h: u32, base: &[u8], srgb: bool) -> Vec<(u32, u32, Vec<
 
 impl AshBackend {
     /// RGBA8 2D array: `layers` (w x h RGBA8 each), full mip chains.
-    fn system_array(&mut self, fmt: vk::Format, w: u32, h: u32, layers: &[Vec<u8>], srgb: bool, name: &str) -> Result<(ArrayImage, u64), BackendError> {
+    fn system_array(
+        &mut self,
+        fmt: vk::Format,
+        w: u32,
+        h: u32,
+        layers: &[Vec<u8>],
+        srgb: bool,
+        name: &str,
+    ) -> Result<(ArrayImage, u64), BackendError> {
         let chains: Vec<Vec<(u32, u32, Vec<u8>)>> = {
             use rayon::prelude::*;
             layers.par_iter().map(|l| mip_chain(w, h, l, srgb)).collect()
@@ -136,7 +144,13 @@ impl AshBackend {
             .initial_layout(vk::ImageLayout::UNDEFINED);
         let (image, alloc) = self.planet_image(&ici, name)?;
         let len: usize = chains.iter().flatten().map(|m| m.2.len()).sum();
-        let mut staging = GpuBuffer::new(&mut self.ctx, "system_staging", len as u64, vk::BufferUsageFlags::TRANSFER_SRC, MemoryLocation::CpuToGpu)?;
+        let mut staging = GpuBuffer::new(
+            &mut self.ctx,
+            "system_staging",
+            len as u64,
+            vk::BufferUsageFlags::TRANSFER_SRC,
+            MemoryLocation::CpuToGpu,
+        )?;
         let mut regions = Vec::new();
         let mut off = 0usize;
         for (l, chain) in chains.iter().enumerate() {
@@ -146,14 +160,25 @@ impl AshBackend {
                     buffer_offset: off as u64,
                     buffer_row_length: 0,
                     buffer_image_height: 0,
-                    image_subresource: vk::ImageSubresourceLayers { aspect_mask: vk::ImageAspectFlags::COLOR, mip_level: m as u32, base_array_layer: l as u32, layer_count: 1 },
+                    image_subresource: vk::ImageSubresourceLayers {
+                        aspect_mask: vk::ImageAspectFlags::COLOR,
+                        mip_level: m as u32,
+                        base_array_layer: l as u32,
+                        layer_count: 1,
+                    },
                     image_offset: vk::Offset3D::default(),
                     image_extent: vk::Extent3D { width: *mw, height: *mh, depth: 1 },
                 });
                 off += data.len();
             }
         }
-        let range = vk::ImageSubresourceRange { aspect_mask: vk::ImageAspectFlags::COLOR, base_mip_level: 0, level_count: mips, base_array_layer: 0, layer_count: nl };
+        let range = vk::ImageSubresourceRange {
+            aspect_mask: vk::ImageAspectFlags::COLOR,
+            base_mip_level: 0,
+            level_count: mips,
+            base_array_layer: 0,
+            layer_count: nl,
+        };
         let r = self.planet_copy(&staging, image, range, &regions);
         staging.destroy(&mut self.ctx);
         if let Err(e) = r {
@@ -162,7 +187,11 @@ impl AshBackend {
             let _ = self.ctx.allocator.free(alloc);
             return Err(e);
         }
-        let vci = vk::ImageViewCreateInfo::default().image(image).view_type(vk::ImageViewType::TYPE_2D_ARRAY).format(fmt).subresource_range(range);
+        let vci = vk::ImageViewCreateInfo::default()
+            .image(image)
+            .view_type(vk::ImageViewType::TYPE_2D_ARRAY)
+            .format(fmt)
+            .subresource_range(range);
         // SAFETY: the image is bound and filled; the view matches its format, layers and mips.
         let view = unsafe { self.ctx.device.create_image_view(&vci, None)? };
         Ok((ArrayImage { image, view, alloc: Some(alloc) }, len as u64))
@@ -170,8 +199,20 @@ impl AshBackend {
 
     /// Upload the body layers (`w` x `h` sRGB RGBA8 each) and the ring profiles (`rw` x `rh`
     /// RGBA8: sRGB colour, linear opacity) and build the descriptor set.
-    pub fn system_upload(&mut self, w: u32, h: u32, layers: &[Vec<u8>], rw: u32, rh: u32, rings: &[Vec<u8>]) -> Result<SystemTextures, BackendError> {
-        if layers.is_empty() || rings.is_empty() || layers.iter().any(|l| l.len() != (w * h * 4) as usize) || rings.iter().any(|l| l.len() != (rw * rh * 4) as usize) {
+    pub fn system_upload(
+        &mut self,
+        w: u32,
+        h: u32,
+        layers: &[Vec<u8>],
+        rw: u32,
+        rh: u32,
+        rings: &[Vec<u8>],
+    ) -> Result<SystemTextures, BackendError> {
+        if layers.is_empty()
+            || rings.is_empty()
+            || layers.iter().any(|l| l.len() != (w * h * 4) as usize)
+            || rings.iter().any(|l| l.len() != (rw * rh * 4) as usize)
+        {
             return Err(BackendError::BadConfig("system textures: layer sizes"));
         }
         let (body, b0) = self.system_array(vk::Format::R8G8B8A8_SRGB, w, h, layers, true, "system_bodies")?;
@@ -198,25 +239,49 @@ impl AshBackend {
             .address_mode_w(vk::SamplerAddressMode::CLAMP_TO_EDGE)
             .max_lod(0.0);
         let binds: Vec<vk::DescriptorSetLayoutBinding> = (0..2)
-            .map(|b| vk::DescriptorSetLayoutBinding::default().binding(b).descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER).descriptor_count(1).stage_flags(vk::ShaderStageFlags::FRAGMENT))
+            .map(|b| {
+                vk::DescriptorSetLayoutBinding::default()
+                    .binding(b)
+                    .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                    .descriptor_count(1)
+                    .stage_flags(vk::ShaderStageFlags::FRAGMENT)
+            })
             .collect();
         // SAFETY: device valid; create infos reference live locals (anisotropy only when enabled).
         let (sampler, ring_sampler, set_layout, pool, set) = unsafe {
             let sampler = d.create_sampler(&sci, None)?;
             let ring_sampler = d.create_sampler(&rsci, None)?;
-            let sl = d.create_descriptor_set_layout(&vk::DescriptorSetLayoutCreateInfo::default().bindings(&binds), None)?;
+            let sl =
+                d.create_descriptor_set_layout(&vk::DescriptorSetLayoutCreateInfo::default().bindings(&binds), None)?;
             let ps = [vk::DescriptorPoolSize { ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER, descriptor_count: 2 }];
-            let pool = d.create_descriptor_pool(&vk::DescriptorPoolCreateInfo::default().max_sets(1).pool_sizes(&ps), None)?;
+            let pool =
+                d.create_descriptor_pool(&vk::DescriptorPoolCreateInfo::default().max_sets(1).pool_sizes(&ps), None)?;
             let sls = [sl];
-            let set = d.allocate_descriptor_sets(&vk::DescriptorSetAllocateInfo::default().descriptor_pool(pool).set_layouts(&sls))?[0];
+            let set = d.allocate_descriptor_sets(
+                &vk::DescriptorSetAllocateInfo::default().descriptor_pool(pool).set_layouts(&sls),
+            )?[0];
             let infos = [
-                [vk::DescriptorImageInfo { sampler, image_view: body.view, image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL }],
-                [vk::DescriptorImageInfo { sampler: ring_sampler, image_view: ring.view, image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL }],
+                [vk::DescriptorImageInfo {
+                    sampler,
+                    image_view: body.view,
+                    image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+                }],
+                [vk::DescriptorImageInfo {
+                    sampler: ring_sampler,
+                    image_view: ring.view,
+                    image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+                }],
             ];
             let writes: Vec<vk::WriteDescriptorSet> = infos
                 .iter()
                 .enumerate()
-                .map(|(b, i)| vk::WriteDescriptorSet::default().dst_set(set).dst_binding(b as u32).descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER).image_info(i))
+                .map(|(b, i)| {
+                    vk::WriteDescriptorSet::default()
+                        .dst_set(set)
+                        .dst_binding(b as u32)
+                        .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                        .image_info(i)
+                })
                 .collect();
             d.update_descriptor_sets(&writes, &[]);
             (sampler, ring_sampler, sl, pool, set)
@@ -246,7 +311,13 @@ impl AshBackend {
     }
 
     /// Render one frame offscreen at `width` x `height`; returns linear HDR RGBA f32 (row-major).
-    pub fn render_system(&mut self, tex: &SystemTextures, params: &SystemParamsGpu, width: u32, height: u32) -> Result<(Vec<[f32; 4]>, SystemTimings), BackendError> {
+    pub fn render_system(
+        &mut self,
+        tex: &SystemTextures,
+        params: &SystemParamsGpu,
+        width: u32,
+        height: u32,
+    ) -> Result<(Vec<[f32; 4]>, SystemTimings), BackendError> {
         self.ctx.wait_idle();
         let d = self.ctx.device.clone();
         let sda = vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS | vk::BufferUsageFlags::STORAGE_BUFFER;
@@ -254,16 +325,39 @@ impl AshBackend {
         let mut pb = GpuBuffer::new(&mut self.ctx, "system_params", bytes.len() as u64, sda, MemoryLocation::CpuToGpu)?;
         pb.mapped_mut()[..bytes.len()].copy_from_slice(bytes);
         let ext = vk::Extent2D { width, height };
-        let mut color = GpuImage::new(&mut self.ctx, "system_color", ext, COLOR, vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::TRANSFER_SRC, vk::ImageAspectFlags::COLOR)?;
+        let mut color = GpuImage::new(
+            &mut self.ctx,
+            "system_color",
+            ext,
+            COLOR,
+            vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::TRANSFER_SRC,
+            vk::ImageAspectFlags::COLOR,
+        )?;
         let rb_bytes = width as u64 * height as u64 * 16;
-        let rb = GpuBuffer::new(&mut self.ctx, "system_readback", rb_bytes, vk::BufferUsageFlags::TRANSFER_DST, MemoryLocation::GpuToCpu)?;
+        let rb = GpuBuffer::new(
+            &mut self.ctx,
+            "system_readback",
+            rb_bytes,
+            vk::BufferUsageFlags::TRANSFER_DST,
+            MemoryLocation::GpuToCpu,
+        )?;
         let range = [vk::PushConstantRange { stage_flags: vk::ShaderStageFlags::FRAGMENT, offset: 0, size: 8 }];
         let sls = [tex.set_layout];
         // SAFETY: device valid; create info references live locals.
-        let layout = unsafe { d.create_pipeline_layout(&vk::PipelineLayoutCreateInfo::default().set_layouts(&sls).push_constant_ranges(&range), None)? };
+        let layout = unsafe {
+            d.create_pipeline_layout(
+                &vk::PipelineLayoutCreateInfo::default().set_layouts(&sls).push_constant_ranges(&range),
+                None,
+            )?
+        };
         let pipe = pipeline(&d, layout)?;
         // SAFETY: device valid.
-        let qp = unsafe { d.create_query_pool(&vk::QueryPoolCreateInfo::default().query_type(vk::QueryType::TIMESTAMP).query_count(2), None)? };
+        let qp = unsafe {
+            d.create_query_pool(
+                &vk::QueryPoolCreateInfo::default().query_type(vk::QueryType::TIMESTAMP).query_count(2),
+                None,
+            )?
+        };
         let addr = pb.address;
         let r = self.ctx.immediate_submit(|cmd| {
             use vk::AccessFlags2 as A;
@@ -272,27 +366,62 @@ impl AshBackend {
             unsafe {
                 d.cmd_reset_query_pool(cmd, qp, 0, 2);
                 d.cmd_write_timestamp2(cmd, S::TOP_OF_PIPE, qp, 0);
-                image_barrier(&d, cmd, color.image, vk::ImageAspectFlags::COLOR, (vk::ImageLayout::UNDEFINED, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL), (S::NONE, A::NONE), (S::COLOR_ATTACHMENT_OUTPUT, A::COLOR_ATTACHMENT_WRITE));
+                image_barrier(
+                    &d,
+                    cmd,
+                    color.image,
+                    vk::ImageAspectFlags::COLOR,
+                    (vk::ImageLayout::UNDEFINED, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL),
+                    (S::NONE, A::NONE),
+                    (S::COLOR_ATTACHMENT_OUTPUT, A::COLOR_ATTACHMENT_WRITE),
+                );
                 let catt = [vk::RenderingAttachmentInfo::default()
                     .image_view(color.view)
                     .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
                     .load_op(vk::AttachmentLoadOp::DONT_CARE)
                     .store_op(vk::AttachmentStoreOp::STORE)];
-                let ri = vk::RenderingInfo::default().render_area(vk::Rect2D { offset: vk::Offset2D::default(), extent: ext }).layer_count(1).color_attachments(&catt);
+                let ri = vk::RenderingInfo::default()
+                    .render_area(vk::Rect2D { offset: vk::Offset2D::default(), extent: ext })
+                    .layer_count(1)
+                    .color_attachments(&catt);
                 d.cmd_begin_rendering(cmd, &ri);
-                d.cmd_set_viewport(cmd, 0, &[vk::Viewport { x: 0.0, y: 0.0, width: ext.width as f32, height: ext.height as f32, min_depth: 0.0, max_depth: 1.0 }]);
+                d.cmd_set_viewport(
+                    cmd,
+                    0,
+                    &[vk::Viewport {
+                        x: 0.0,
+                        y: 0.0,
+                        width: ext.width as f32,
+                        height: ext.height as f32,
+                        min_depth: 0.0,
+                        max_depth: 1.0,
+                    }],
+                );
                 d.cmd_set_scissor(cmd, 0, &[vk::Rect2D { offset: vk::Offset2D::default(), extent: ext }]);
                 d.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, pipe);
                 d.cmd_bind_descriptor_sets(cmd, vk::PipelineBindPoint::GRAPHICS, layout, 0, &[tex.set], &[]);
                 d.cmd_push_constants(cmd, layout, vk::ShaderStageFlags::FRAGMENT, 0, &addr.to_le_bytes());
                 d.cmd_draw(cmd, 3, 1, 0, 0);
                 d.cmd_end_rendering(cmd);
-                image_barrier(&d, cmd, color.image, vk::ImageAspectFlags::COLOR, (vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL, vk::ImageLayout::TRANSFER_SRC_OPTIMAL), (S::COLOR_ATTACHMENT_OUTPUT, A::COLOR_ATTACHMENT_WRITE), (S::COPY, A::TRANSFER_READ));
+                image_barrier(
+                    &d,
+                    cmd,
+                    color.image,
+                    vk::ImageAspectFlags::COLOR,
+                    (vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL, vk::ImageLayout::TRANSFER_SRC_OPTIMAL),
+                    (S::COLOR_ATTACHMENT_OUTPUT, A::COLOR_ATTACHMENT_WRITE),
+                    (S::COPY, A::TRANSFER_READ),
+                );
                 let region = [vk::BufferImageCopy {
                     buffer_offset: 0,
                     buffer_row_length: 0,
                     buffer_image_height: 0,
-                    image_subresource: vk::ImageSubresourceLayers { aspect_mask: vk::ImageAspectFlags::COLOR, mip_level: 0, base_array_layer: 0, layer_count: 1 },
+                    image_subresource: vk::ImageSubresourceLayers {
+                        aspect_mask: vk::ImageAspectFlags::COLOR,
+                        mip_level: 0,
+                        base_array_layer: 0,
+                        layer_count: 1,
+                    },
                     image_offset: vk::Offset3D::default(),
                     image_extent: vk::Extent3D { width, height, depth: 1 },
                 }];
@@ -307,11 +436,19 @@ impl AshBackend {
         {
             let mut ts = [0u64; 2];
             // SAFETY: queries 0..2 were written by the completed submit.
-            if unsafe { d.get_query_pool_results(qp, 0, &mut ts, vk::QueryResultFlags::TYPE_64 | vk::QueryResultFlags::WAIT) }.is_ok() {
+            if unsafe {
+                d.get_query_pool_results(qp, 0, &mut ts, vk::QueryResultFlags::TYPE_64 | vk::QueryResultFlags::WAIT)
+            }
+            .is_ok()
+            {
                 t.gpu_ms = ts[1].saturating_sub(ts[0]) as f64 * period as f64 * 1e-6;
             }
         }
-        let px: Vec<[f32; 4]> = if r.is_ok() { bytemuck::cast_slice::<u8, [f32; 4]>(&rb.mapped()[..rb_bytes as usize]).to_vec() } else { Vec::new() };
+        let px: Vec<[f32; 4]> = if r.is_ok() {
+            bytemuck::cast_slice::<u8, [f32; 4]>(&rb.mapped()[..rb_bytes as usize]).to_vec()
+        } else {
+            Vec::new()
+        };
         // SAFETY: the submit completed (immediate_submit waits); nothing references these objects.
         unsafe {
             d.destroy_query_pool(qp, None);
@@ -334,12 +471,18 @@ fn pipeline(d: &ash::Device, layout: vk::PipelineLayout) -> Result<vk::Pipeline,
         let fsm = crate::pass::shader_module(d, SYSTEM_FS)?;
         let stages = [
             vk::PipelineShaderStageCreateInfo::default().stage(vk::ShaderStageFlags::VERTEX).module(vsm).name(c"main"),
-            vk::PipelineShaderStageCreateInfo::default().stage(vk::ShaderStageFlags::FRAGMENT).module(fsm).name(c"main"),
+            vk::PipelineShaderStageCreateInfo::default()
+                .stage(vk::ShaderStageFlags::FRAGMENT)
+                .module(fsm)
+                .name(c"main"),
         ];
         let vi = vk::PipelineVertexInputStateCreateInfo::default();
         let ia = vk::PipelineInputAssemblyStateCreateInfo::default().topology(vk::PrimitiveTopology::TRIANGLE_LIST);
         let vp = vk::PipelineViewportStateCreateInfo::default().viewport_count(1).scissor_count(1);
-        let rs = vk::PipelineRasterizationStateCreateInfo::default().polygon_mode(vk::PolygonMode::FILL).cull_mode(vk::CullModeFlags::NONE).line_width(1.0);
+        let rs = vk::PipelineRasterizationStateCreateInfo::default()
+            .polygon_mode(vk::PolygonMode::FILL)
+            .cull_mode(vk::CullModeFlags::NONE)
+            .line_width(1.0);
         let ms = vk::PipelineMultisampleStateCreateInfo::default().rasterization_samples(vk::SampleCountFlags::TYPE_1);
         let ds = vk::PipelineDepthStencilStateCreateInfo::default();
         let blend = [vk::PipelineColorBlendAttachmentState::default().color_write_mask(vk::ColorComponentFlags::RGBA)];
@@ -382,7 +525,10 @@ mod layout_tests {
         let fields = |name: &str| -> Vec<String> {
             let body = &src[src.find(&format!("struct {name} {{")).unwrap()..];
             let body = &body[..body.find("};").unwrap()];
-            body.lines().filter_map(|l| l.trim().strip_prefix("float4 ")).map(|l| l.split([';', '[']).next().unwrap().trim().to_string()).collect()
+            body.lines()
+                .filter_map(|l| l.trim().strip_prefix("float4 "))
+                .map(|l| l.split([';', '[']).next().unwrap().trim().to_string())
+                .collect()
         };
         assert_eq!(fields("SBody"), ["pos", "r0", "r1", "r2", "shade", "tint", "ring", "extra"]);
         assert_eq!(fields("SParams"), ["right", "up", "fwd", "sun", "view", "corona", "sunpole", "light", "limb"]);
