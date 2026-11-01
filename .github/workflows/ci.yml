@@ -7,6 +7,10 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Least privilege: the jobs only read the repository.
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -15,15 +19,22 @@ env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
   RUST_BACKTRACE: 1
+  # Slang compiler for crates/render-ash/build.rs (same version as tools/compile_shaders.sh).
+  SLANG_VERSION: "2026.20"
+  SLANG_SHA256: e863e568c204810d6e8bc31852f056aef6763c55ea9925db2db7affa060347c9
 
+# Actions are pinned to full commit SHAs (tag in the trailing comment).
 jobs:
   fmt:
     name: rustfmt
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
           components: rustfmt
       - run: cargo fmt --all -- --check
 
@@ -31,11 +42,27 @@ jobs:
     name: clippy + check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
+          persist-credentials: false
+      - name: Install slangc (official release)
+        run: |
+          set -euo pipefail
+          url="https://github.com/shader-slang/slang/releases/download/v${SLANG_VERSION}/slang-${SLANG_VERSION}-linux-x86_64.tar.gz"
+          dir="$RUNNER_TEMP/slang"
+          mkdir -p "$dir"
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/slang.tar.gz" "$url"
+          echo "${SLANG_SHA256}  $RUNNER_TEMP/slang.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/slang.tar.gz" -C "$dir"
+          "$dir/bin/slangc" -v
+          # build.rs fails the build if an explicit $SLANGC does not run, so a broken install
+          # can never silently fall back to the checked-in SPIR-V.
+          echo "SLANGC=$dir/bin/slangc" >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
           components: clippy
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           shared-key: lint
       - name: cargo clippy
@@ -47,16 +74,33 @@ jobs:
     name: test (lavapipe)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      # No GPU on hosted runners: Mesa's lavapipe provides a software Vulkan 1.3 device so the
-      # render-ash GPU tests actually run (they print "SKIP" and pass if no device is found).
-      # The Khronos validation layer is optional; the tests enable it when installed.
-      - name: Install Vulkan (lavapipe) + validation layer
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      # No GPU on hosted runners: Mesa's lavapipe provides a software Vulkan 1.3 device, so the
+      # render-ash GPU tests really run, and they fail (not skip) on CI if no device comes up.
+      # vulkan-validationlayers is deliberately NOT installed: Ubuntu's packaged layer is older
+      # than the one the tests are validated against and reports false SYNC-HAZARD errors.
+      # The tests enable validation only when the layer is present.
+      - name: Install Vulkan loader + lavapipe
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libvulkan1 mesa-vulkan-drivers vulkan-validationlayers
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+          sudo apt-get install -y --no-install-recommends libvulkan1 mesa-vulkan-drivers
+      - name: Install slangc (official release)
+        run: |
+          set -euo pipefail
+          url="https://github.com/shader-slang/slang/releases/download/v${SLANG_VERSION}/slang-${SLANG_VERSION}-linux-x86_64.tar.gz"
+          dir="$RUNNER_TEMP/slang"
+          mkdir -p "$dir"
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/slang.tar.gz" "$url"
+          echo "${SLANG_SHA256}  $RUNNER_TEMP/slang.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/slang.tar.gz" -C "$dir"
+          "$dir/bin/slangc" -v
+          echo "SLANGC=$dir/bin/slangc" >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           shared-key: test
       - name: cargo test
