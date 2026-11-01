@@ -1,0 +1,8 @@
+# Frame-time budgets (ms) the agent prompts in starter.md are accepted against.
+[particles]
+n = 1_000_000
+simd_mt_ms = 0.60
+simd_1t_ms = 2.5
+
+[terrain]
+chunk_full_lod0_ms = 0.12

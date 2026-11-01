@@ -1,0 +1,50 @@
+[workspace]
+resolver = "3"
+members = ["crates/*", "benches"]
+
+[workspace.package]
+edition = "2024"
+version = "0.1.0"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[workspace.dependencies]
+bevy              = { version = "0.20.0", default-features = false }
+ash               = "0.38.0"
+ash-window        = "0.13.0"
+raw-window-handle = "0.6.2"
+gpu-allocator     = { version = "0.28.0", default-features = false, features = ["std", "vulkan"] }
+bytemuck          = { version = "1.25.2", features = ["derive"] }
+glam              = { version = "0.34.1", features = ["bytemuck"] }
+wide              = "1.7.1"
+tracy-client      = { version = "0.19.0", default-features = false }
+tracing-tracy     = "0.12.0"
+criterion         = "0.8.2"
+rayon             = "1"
+
+lowlevel-abi = { path = "crates/lowlevel-abi" }
+mem          = { path = "crates/mem" }
+hot          = { path = "crates/hot" }
+terrain      = { path = "crates/terrain" }
+coords       = { path = "crates/coords" }
+voxel        = { path = "crates/voxel" }
+render-ash   = { path = "crates/render-ash" }
+ffi          = { path = "crates/ffi" }
+bridge       = { path = "crates/bridge" }
+planet       = { path = "crates/planet" }
+
+[workspace.lints.clippy]
+undocumented_unsafe_blocks = "deny"
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+
+[profile.dev.package."*"]
+opt-level = 2
+
+[profile.release]
+debug = "line-tables-only"
+
+[profile.bench]
+inherits = "release"
+lto = "thin"

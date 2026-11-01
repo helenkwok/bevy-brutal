@@ -1,0 +1,21 @@
+[package]
+name = "hot"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[features]
+default = ["parallel"]
+parallel = ["dep:rayon"]
+tracy = ["tracy-client/enable"]
+
+[dependencies]
+lowlevel-abi.workspace = true
+wide.workspace = true
+rayon = { workspace = true, optional = true }
+tracy-client.workspace = true
+
+[dev-dependencies]
+
+[lints]
+workspace = true

@@ -1,0 +1,8 @@
+# Hot crates (wide::f32x8 / i32x8) are budgeted for AVX2: on the baseline x86-64 target, f32x8 is
+# split into SSE2 halves and i32x8 multiplies (the noise hash) are emulated, ~2.7x slower.
+# x86-64-v3 = AVX2 + FMA + BMI2 (Haswell / Zen 1 and newer, incl. Steam Deck).
+# Opt out for older CPUs:  RUSTFLAGS="" cargo build   (or delete this file).
+# NB: Rust never contracts a*b+c into FMA on its own, so the scalar terrain reference stays
+# bit-reproducible across these targets.
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-C", "target-cpu=x86-64-v3"]

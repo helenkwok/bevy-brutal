@@ -1,0 +1,18 @@
+[package]
+name = "bridge"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[features]
+tracy = ["hot/tracy", "dep:tracy-client", "tracy-client/enable"]
+
+[dependencies]
+bevy = { workspace = true, features = ["std", "multi_threaded", "bevy_log"] }
+lowlevel-abi.workspace = true
+hot.workspace = true
+coords.workspace = true
+tracy-client = { workspace = true, optional = true }
+
+[lints]
+workspace = true

@@ -1,0 +1,30 @@
+[package]
+name = "app"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "game"
+path = "src/main.rs"
+
+[features]
+default = ["vulkan"]
+# Use the ash backend (headless context now; swapchain is TODO). Falls back to "no backend" at runtime if
+# no Vulkan 1.3 driver is present.
+vulkan = ["dep:render-ash"]
+# Mode B windowing: winit window, no bevy_render. Needs a display to run.
+windowed = ["bevy/bevy_window", "bevy/bevy_winit", "bevy/x11", "bevy/wayland", "vulkan", "render-ash/windowed"]
+# Tracy: bevy spans via tracing-tracy plus our own tracy_client spans in the low-level crates.
+tracy = ["bevy/trace_tracy", "bridge/tracy", "terrain/tracy", "render-ash?/tracy"]
+
+[dependencies]
+bevy = { workspace = true, features = ["std", "multi_threaded", "bevy_log"] }
+bridge.workspace = true
+lowlevel-abi.workspace = true
+terrain.workspace = true
+mem.workspace = true
+render-ash = { workspace = true, optional = true }
+
+[lints]
+workspace = true

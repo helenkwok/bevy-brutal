@@ -1,0 +1,28 @@
+[package]
+name = "benches"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+lowlevel-abi.workspace = true
+hot.workspace = true
+terrain.workspace = true
+mem.workspace = true
+
+[dev-dependencies]
+criterion.workspace = true
+
+[[bench]]
+name = "particles"
+harness = false
+
+[[bench]]
+name = "terrain"
+harness = false
+
+[lints]
+workspace = true
+
+[lib]
+bench = false

@@ -1,0 +1,11 @@
+[package]
+name = "lowlevel-abi"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+bytemuck.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,22 @@
+bevy-brutal
+Copyright (c) 2026 Helen Kwok
+
+This product is dual-licensed under the MIT License and the Apache License,
+Version 2.0. See LICENSE-MIT and LICENSE-APACHE.
+
+This project is inspired by the design ideas of Ahwoo's BRUTAL framework
+(https://github.com/ahwootech/BRUTAL). It does not include, link to, or
+redistribute BRUTAL source code. BRUTAL remains Copyright (c) Ahwoo Limited
+under the BRUTAL License v1.0.
+
+Third-party code redistributed in this repository (see also individual files):
+
+- Transvoxel lookup tables / algorithm (Eric Lengyel), MIT License
+  (crates/voxel/LICENSE-Transvoxel)
+
+Dependencies (Bevy, ash, glam, and others) are not redistributed as source
+here; each is used under its own licence as declared on crates.io.
+
+Earth / solar-system data is NOT part of the source licence and is fetched
+separately (see CREDITS.md). Some imagery layers are not MIT/Apache-compatible
+(e.g. Sentinel-2 cloudless 2020 is CC BY-NC-SA 4.0).

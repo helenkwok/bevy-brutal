@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# Regenerate the checked-in SPIR-V fallback (used by build.rs when slangc is absent).
+# Install slangc: https://github.com/shader-slang/slang/releases (v2026.20 used here).
+set -euo pipefail
+cd "$(dirname "$0")/../crates/render-ash/shaders"
+SLANGC="${SLANGC:-slangc}"
+while read -r src entry stage name; do
+  "$SLANGC" "$src" -entry "$entry" -stage "$stage" -target spirv -profile spirv_1_6 \
+    -fvk-use-scalar-layout -O2 -I . -o "spv/$name.spv"
+  if command -v spirv-val >/dev/null; then spirv-val --target-env vulkan1.3 --scalar-block-layout "spv/$name.spv"; fi
+  echo "spv/$name.spv"
+done <<'LIST'
+cull.slang main compute cull
+scan.slang scanBlocks compute scan_blocks
+scan.slang addOffsets compute scan_add
+scan.slang scanBlocksWave compute scan_blocks_wave
+scatter.slang main compute scatter
+compact.slang main compute compact
+mesh.slang vertexMain vertex mesh_vs
+mesh.slang fragmentMain fragment mesh_fs
+surface.slang vertexMain vertex surface_vs
+surface.slang fragmentMain fragment surface_fs
+voxel.slang countMain compute voxel_count
+voxel.slang emitMain compute voxel_emit
+tq.slang decodeMain compute tq_decode
+quality.slang terrainVS vertex quality_terrain_vs
+quality.slang terrainFS fragment quality_terrain_fs
+quality.slang shadowVS vertex quality_shadow_vs
+quality.slang skyVS vertex quality_sky_vs
+quality.slang skyFS fragment quality_sky_fs
+quality.slang instVS vertex quality_inst_vs
+quality.slang instShadowVS vertex quality_inst_shadow_vs
+quality.slang instShadowAlphaVS vertex quality_inst_shadow_alpha_vs
+quality.slang instShadowAlphaFS fragment quality_inst_shadow_alpha_fs
+quality.slang instFS fragment quality_inst_fs
+quality.slang instDepthFS fragment quality_inst_depth_fs
+quality.slang impVS vertex quality_imp_vs
+quality.slang impFS fragment quality_imp_fs
+quality.slang impFarFS fragment quality_imp_far_fs
+quality.slang impDepthFS fragment quality_imp_depth_fs
+quality.slang impEqFS fragment quality_imp_eq_fs
+quality.slang impShadowFarFS fragment quality_imp_shadow_far_fs
+quality.slang impShadowVS vertex quality_imp_shadow_vs
+quality.slang impShadowFS fragment quality_imp_shadow_fs
+qcull.slang cullMain compute qcull_cull
+qcull.slang scatterMain compute qcull_scatter
+qcull.slang drawsMain compute qcull_draws
+quality.slang atmoTransmittanceCS compute quality_atmo_transmittance
+quality.slang atmoMultiScatterCS compute quality_atmo_multiscatter
+quality.slang atmoSkyViewCS compute quality_atmo_skyview
+quality.slang atmoAerialCS compute quality_atmo_aerial
+quality.slang atmoIrradianceCS compute quality_atmo_irradiance
+planet.slang planetVS vertex planet_vs
+planet.slang planetFS fragment planet_fs
+planet.slang skyVS vertex planet_sky_vs
+planet.slang skyFS fragment planet_sky_fs
+planet.slang transmittanceCS compute planet_transmittance
+planet.slang multiScatterCS compute planet_multiscatter
+planet.slang skyGroundCS compute planet_skyground
+planet.slang irradianceCS compute planet_irradiance
+system.slang fullVS vertex system_vs
+system.slang systemFS fragment system_fs
+LIST

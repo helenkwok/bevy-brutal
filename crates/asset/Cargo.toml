@@ -1,0 +1,20 @@
+[package]
+name = "asset"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+license = "MIT OR Apache-2.0"
+description = "On-disk / streaming format for terrain bricks, brick meshes and vegetation instances: FlatBuffers-style zero-copy container + Draco-style compression"
+
+[dependencies]
+bytemuck.workspace = true
+coords.workspace = true
+voxel.workspace = true
+lowlevel-abi.workspace = true
+rayon.workspace = true
+
+[dev-dependencies]
+rayon.workspace = true
+
+[lints]
+workspace = true

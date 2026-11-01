@@ -1,0 +1,21 @@
+[package]
+name = "planet"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+build = "build.rs"
+license = "MIT OR Apache-2.0"
+description = "Cube-sphere planet: per-face quadtree (2:1 restricted, stitched + skirted patches, f64 frame -> camera-relative f32), Earth texture bake (NASA imagery -> BC cube maps in the asset container)"
+
+[dependencies]
+glam.workspace = true
+coords.workspace = true
+bytemuck.workspace = true
+rayon.workspace = true
+asset = { path = "../asset" }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "tiff"] }
+intel_tex_2 = "0.5"
+zstd = { version = "0.13", features = ["zstdmt"] }
+
+[lints]
+workspace = true

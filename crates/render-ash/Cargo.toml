@@ -1,0 +1,52 @@
+[package]
+name = "render-ash"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+build = "build.rs"
+
+[features]
+tracy = ["tracy-client/enable"]
+# Swapchain + present path (surface from raw-window-handle). Headless offscreen rendering is always available.
+windowed = []
+
+[dependencies]
+lowlevel-abi.workspace = true
+ash.workspace = true
+ash-window.workspace = true
+raw-window-handle.workspace = true
+gpu-allocator.workspace = true
+bytemuck.workspace = true
+glam.workspace = true
+tracy-client.workspace = true
+voxel.workspace = true
+rayon.workspace = true
+asset = { path = "../asset" }
+planet.workspace = true
+
+[dev-dependencies]
+png = "0.18.1"
+terrain.workspace = true
+mem.workspace = true
+coords.workspace = true
+
+[[example]]
+name = "instanced_stress"
+
+[[example]]
+name = "scenes"
+
+[[example]]
+name = "quality"
+
+[[example]]
+name = "earth"
+
+[[example]]
+name = "solar"
+
+[[example]]
+name = "descent"
+
+[lints]
+workspace = true
