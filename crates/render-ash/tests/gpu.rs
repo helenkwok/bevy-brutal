@@ -3,6 +3,8 @@
 //! Tests are serialized (one Vulkan device at a time) and each asserts zero validation errors.
 use std::sync::Mutex;
 
+mod common;
+
 use lowlevel_abi::{FrameSnapshot, RenderBackend};
 use render_ash::cull::cpu_cull;
 use render_ash::scene::{demo_view_proj, random_scene};
@@ -39,7 +41,7 @@ fn backend_cfg(cfg: BackendConfig) -> Option<AshBackend> {
             Some(b)
         }
         Err(e) => {
-            eprintln!("SKIP: no usable Vulkan 1.3 device: {e:?}");
+            common::skip_or_fail("AshBackend::new", &e);
             None
         }
     }

@@ -5,6 +5,8 @@
 //! - NaN-free shading at exact nadir (pow of a negative base in the Fresnel term);
 //! - night radiances ~1e-6 must survive the RGBA16F target (pre-exposure), with the city colour
 //!   ratios intact (they used to quantise into f16 subnormals -> banding and a green cast).
+mod common;
+
 use glam::{DVec3, Mat4};
 use planet::bake::bake_cube;
 use planet::pack::{HeightCube, PlanetPack, TexFormat};
@@ -138,7 +140,7 @@ fn planet_renders_round_nan_free_and_resolves_night_radiance() {
     ) {
         Ok(b) => b,
         Err(e) => {
-            eprintln!("SKIP: no usable Vulkan 1.3 device: {e:?}");
+            common::skip_or_fail("AshBackend::new", &e);
             return;
         }
     };
@@ -204,7 +206,7 @@ fn cloud_window_clears_and_far_deck_gets_structure() {
     ) {
         Ok(b) => b,
         Err(e) => {
-            eprintln!("SKIP: no usable Vulkan 1.3 device: {e:?}");
+            common::skip_or_fail("AshBackend::new", &e);
             return;
         }
     };

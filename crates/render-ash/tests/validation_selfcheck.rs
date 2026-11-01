@@ -1,5 +1,7 @@
 //! Proves the counting debug messenger is live: a deliberately invalid call must be reported.
 //! Separate test binary (own process) so the global error counter of tests/gpu.rs stays clean.
+mod common;
+
 use ash::vk;
 use render_ash::VkContext;
 use render_ash::validation::message_counts;
@@ -9,7 +11,8 @@ fn messenger_reports_invalid_usage() {
     let ctx = match VkContext::new(None, true) {
         Ok(c) if c.validation_enabled => c,
         Ok(_) => return eprintln!("SKIP: validation layer not installed"),
-        Err(e) => return eprintln!("SKIP: no Vulkan device: {e:?}"),
+        // CI provisions lavapipe, so a missing device fails there; the layer itself is optional.
+        Err(e) => return common::skip_or_fail("VkContext::new", &e),
     };
     let before = message_counts().0;
     // size = 0 violates VUID-VkBufferCreateInfo-size-00912.

@@ -1,6 +1,7 @@
 //! Compile the Slang shaders to SPIR-V 1.6 (Vulkan 1.3) in OUT_DIR with `slangc`.
-//! Lookup: $SLANGC, then `slangc` on PATH. If neither exists, fall back to the checked-in
-//! `shaders/spv/*.spv` (regenerate with `tools/compile_shaders.sh`).
+//! Lookup: $SLANGC, then `slangc` on PATH. If $SLANGC is set it must run (build fails otherwise);
+//! if it is unset and no `slangc` is on PATH, fall back to the checked-in `shaders/spv/*.spv`
+//! (regenerate with `tools/compile_shaders.sh`).
 use std::{env, fs, path::PathBuf, process::Command};
 
 /// (source, entry point, stage, output name)
@@ -62,8 +63,11 @@ fn main() {
     let dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap()).join("shaders");
     println!("cargo:rerun-if-changed=shaders");
     println!("cargo:rerun-if-env-changed=SLANGC");
-    let slangc = env::var("SLANGC").unwrap_or_else(|_| "slangc".into());
+    // An explicit $SLANGC (as CI sets) must work: never fall back to stale SPIR-V silently then.
+    let explicit = env::var("SLANGC").ok().filter(|s| !s.is_empty());
+    let slangc = explicit.clone().unwrap_or_else(|| "slangc".into());
     let have = Command::new(&slangc).arg("-v").output().is_ok_and(|o| o.status.success());
+    assert!(have || explicit.is_none(), "SLANGC={slangc} is set but does not run (`{slangc} -v` failed)");
     for (src, entry, stage, name) in SHADERS {
         let dst = out.join(format!("{name}.spv"));
         if have {
