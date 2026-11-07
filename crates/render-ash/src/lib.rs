@@ -62,3 +62,6 @@ impl From<gpu_allocator::AllocationError> for BackendError {
         Self::Alloc(e)
     }
 }
+
+/// Bounded procedural stellar HDR splats.
+pub mod universe;

@@ -58,6 +58,8 @@ planet.slang transmittanceCS compute planet_transmittance
 planet.slang multiScatterCS compute planet_multiscatter
 planet.slang skyGroundCS compute planet_skyground
 planet.slang irradianceCS compute planet_irradiance
+universe.slang vertexMain vertex universe_vs
+universe.slang fragmentMain fragment universe_fs
 system.slang fullVS vertex system_vs
 system.slang systemFS fragment system_fs
 LIST

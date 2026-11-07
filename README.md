@@ -6,6 +6,31 @@ Inspired by [BRUTAL](https://github.com/ahwootech/BRUTAL)'s design ideas; this i
 
 See [starter.md](starter.md) for the working notes, and [CREDITS.md](CREDITS.md) for third-party and data licences.
 
+## U1 procedural universe
+
+`cargo run --release -p render-ash --example universe -- --out out/quality/U1`
+produces named overview, inclined-disk, fixed-exposure parallax and Sol-approach
+PNGs, unexposed RGBA-f32 HDR files and JSON flux/count/timing metadata.
+
+This is **65,536 seeded synthetic stellar tracers**, not a real Milky Way map or a
+stellar catalogue. The model includes a bulge, four broad arms, inter-arm disk and
+256 nearby tracers; arbitrary log-uniform 0.1..100,000 solar luminosity weights and
+luminance-normalized synthetic RGB colours are not a calibrated stellar population.
+One Sol anchor has unit luminosity at the existing solar frame position.
+Flux follows `luminosity * (AU / distance)^2`; positions and camera subtraction are
+f64 metres, with screen-space f32 uploads. A normalized finite square-support ±4-sigma Gaussian
+instrument PSF (sigma 0.7 output pixels) is not an inflated stellar body. Flux lost
+at the image boundary stays lost. Display exposure is explicit, not applied to HDR;
+`overview_deep` is labelled separately. No EPIC grade or fabricated gas/dust.
+
+The pass retains a 2 MiB input buffer, pipeline and image/readback targets, caps
+submission at 65,536 and target extents at 4096². Selection/input CPU scratch is
+reused; HDR readback is borrowed until the next frame rather than copied. Explicit
+resize/free waits for completion before resource retirement. Timing JSON names the
+CPU Vulkan qualification; hardware 60fps is not established. This is a starfield
+and numeric Sol-frame approach, **not** a visual handoff into SS2 or Earth. The
+existing debug `scenes`, solar and Earth paths are unchanged.
+
 ## DEM close-tile streaming (`earth` example)
 
 With `DEM=<terrain-grid dir>` and `OSM=<osm-extract dir>`, the close graft follows

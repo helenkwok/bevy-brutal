@@ -56,5 +56,8 @@ name = "dem_terrain"
 [[example]]
 name = "drape_lod"
 
+[[example]]
+name = "universe"
+
 [lints]
 workspace = true
