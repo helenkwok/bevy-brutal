@@ -35,3 +35,6 @@ pub mod stream;
 
 /// Procedural emissive universe demonstration (not a stellar catalogue).
 pub mod universe;
+
+/// External observed GCNS records (no bundled data).
+pub mod gcns;

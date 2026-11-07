@@ -1,4 +1,4 @@
-//! U1: explicitly PROCEDURAL stellar tracers; no catalogue distances, dust or galaxy reconstruction.
+//! Observed external GCNS input by default; synthetic U1 only with explicit --procedural.
 use glam::DVec3;
 use planet::universe::{Camera, LY, MAX_STARS, Population, SOL, Selection};
 use render_ash::{
@@ -15,70 +15,117 @@ struct Shot {
 fn main() {
     let args: Vec<_> = std::env::args().collect();
     let arg = |k: &str| args.iter().position(|a| a == k).and_then(|i| args.get(i + 1)).cloned();
-    let out = PathBuf::from(arg("--out").unwrap_or("out/quality/U1".into()));
+    let procedural = args.iter().any(|a| a == "--procedural");
+    let default_out = if procedural { "out/quality/U1_reference" } else { "out/quality/GCNS" };
+    let out = PathBuf::from(arg("--out").unwrap_or(default_out.into()));
     std::fs::create_dir_all(&out).unwrap();
     let (w, h) = arg("--size")
         .and_then(|v| v.split_once('x').map(|(w, h)| (w.parse().unwrap(), h.parse().unwrap())))
         .unwrap_or((1280, 720));
     let which = arg("--shot").unwrap_or("all".into());
-    let pop = Population::seeded(0x554e495645525345, MAX_STARS);
+    let (pop, raw_rows, dataset) = if procedural {
+        (
+            Population::seeded(0x554e495645525345, MAX_STARS),
+            MAX_STARS,
+            "explicit procedural reference; NOT observed data",
+        )
+    } else {
+        let path = arg("--catalogue").unwrap_or("/workspace/data/astro/gcns/gcns-v1.bin".into());
+        let result = std::fs::File::open(&path).and_then(|f| planet::gcns::read(&mut std::io::BufReader::new(f)));
+        let c = result.unwrap_or_else(|e| {
+            eprintln!("GCNS input {path}: {e}. Run tools/gcns_ingest.py first. No procedural fallback.");
+            std::process::exit(1)
+        });
+        (
+            Population { stars: c.stars },
+            c.raw_rows,
+            "Gaia EDR3 GCNS / Smart et al. 2021; nearby catalogue, NOT full galaxy; ICRS epoch J2016.0",
+        )
+    };
+    let seed_json = if procedural { "\"554e495645525345\"" } else { "null" };
     let make = |pos, target, origin| {
         let mut c = Camera::look_at(pos, target, DVec3::Z, 60f64.to_radians(), w, h).unwrap();
         c.origin = origin;
         c
     };
-    let mut shots = vec![
-        Shot {
-            name: "U1_overview",
-            cam: make(DVec3::new(0.0, -7e20, 6e20), DVec3::ZERO, DVec3::ZERO),
-            exposure: 3e15,
-            frame: "galaxy".into(),
-        },
-        Shot {
-            name: "U1_disk_oblique",
-            cam: make(DVec3::new(0.0, -8e20, 1.7e20), DVec3::ZERO, DVec3::ZERO),
-            exposure: 3e15,
-            frame: "galaxy".into(),
-        },
-        Shot {
-            name: "U1_overview_deep",
-            cam: make(DVec3::new(0.0, -7e20, 6e20), DVec3::ZERO, DVec3::ZERO),
-            exposure: 3e16,
-            frame: "galaxy".into(),
-        },
-        Shot {
-            name: "U1_parallax_A",
-            cam: make(DVec3::new(-30.0, -60.0, 20.0) * LY, DVec3::new(0.0, 50.0, 0.0) * LY, SOL),
-            exposure: 1e10,
-            frame: "sol-relative".into(),
-        },
-        Shot {
-            name: "U1_parallax_B",
-            cam: make(DVec3::new(-20.0, -60.0, 20.0) * LY, DVec3::new(10.0, 50.0, 0.0) * LY, SOL),
-            exposure: 1e10,
-            frame: "sol-relative".into(),
-        },
-    ];
-    for shot in &mut shots {
-        if shot.name.starts_with("U1_overview") {
-            shot.cam.fov = 75f64.to_radians();
+    let shots = if procedural {
+        let mut shots = vec![
+            Shot {
+                name: "U1_overview",
+                cam: make(DVec3::new(0.0, -7e20, 6e20), DVec3::ZERO, DVec3::ZERO),
+                exposure: 3e15,
+                frame: "galaxy".into(),
+            },
+            Shot {
+                name: "U1_disk_oblique",
+                cam: make(DVec3::new(0.0, -8e20, 1.7e20), DVec3::ZERO, DVec3::ZERO),
+                exposure: 3e15,
+                frame: "galaxy".into(),
+            },
+            Shot {
+                name: "U1_overview_deep",
+                cam: make(DVec3::new(0.0, -7e20, 6e20), DVec3::ZERO, DVec3::ZERO),
+                exposure: 3e16,
+                frame: "galaxy".into(),
+            },
+            Shot {
+                name: "U1_parallax_A",
+                cam: make(DVec3::new(-30.0, -60.0, 20.0) * LY, DVec3::new(0.0, 50.0, 0.0) * LY, SOL),
+                exposure: 1e10,
+                frame: "sol-relative".into(),
+            },
+            Shot {
+                name: "U1_parallax_B",
+                cam: make(DVec3::new(-20.0, -60.0, 20.0) * LY, DVec3::new(10.0, 50.0, 0.0) * LY, SOL),
+                exposure: 1e10,
+                frame: "sol-relative".into(),
+            },
+        ];
+        for shot in &mut shots {
+            if shot.name.starts_with("U1_overview") {
+                shot.cam.fov = 75f64.to_radians();
+            }
         }
-    }
-    use coords::frames::{FrameTree, WorldPos};
-    let (mut tree, galaxy) = FrameTree::new("galaxy");
-    let system = tree.add(galaxy, "sol", SOL, 1e13).unwrap();
-    for (name, d) in
-        [("U1_sol_00", 4e18), ("U1_sol_01", 1e17), ("U1_sol_02", 1e15), ("U1_sol_03", 1.01e13), ("U1_sol_04", 0.99e13)]
-    {
-        let cam = tree.rehome(WorldPos { frame: system, p: DVec3::new(0.0, -d, d * 0.02) });
-        let p = tree.convert(cam, system).p;
-        shots.push(Shot {
-            name,
-            cam: make(p, DVec3::ZERO, SOL),
-            exposure: 1e10,
-            frame: tree.frame(cam.frame).name.clone(),
-        });
-    }
+        use coords::frames::{FrameTree, WorldPos};
+        let (mut tree, galaxy) = FrameTree::new("galaxy");
+        let system = tree.add(galaxy, "sol", SOL, 1e13).unwrap();
+        for (name, d) in [
+            ("U1_sol_00", 4e18),
+            ("U1_sol_01", 1e17),
+            ("U1_sol_02", 1e15),
+            ("U1_sol_03", 1.01e13),
+            ("U1_sol_04", 0.99e13),
+        ] {
+            let cam = tree.rehome(WorldPos { frame: system, p: DVec3::new(0.0, -d, d * 0.02) });
+            let p = tree.convert(cam, system).p;
+            shots.push(Shot {
+                name,
+                cam: make(p, DVec3::ZERO, SOL),
+                exposure: 1e10,
+                frame: tree.frame(cam.frame).name.clone(),
+            });
+        }
+        shots
+    } else {
+        let pc = planet::gcns::PARSEC_M;
+        let mut nearby = make(DVec3::new(0.0, -180.0, 80.0) * pc, DVec3::ZERO, DVec3::ZERO);
+        nearby.fov = 75f64.to_radians();
+        vec![
+            Shot { name: "GCNS_nearby", cam: nearby, exposure: 3e2, frame: "Sol-local ICRS J2016.0".into() },
+            Shot {
+                name: "GCNS_parallax_A",
+                cam: make(DVec3::ZERO, DVec3::X, DVec3::ZERO),
+                exposure: 3e2,
+                frame: "Sol-local ICRS J2016.0".into(),
+            },
+            Shot {
+                name: "GCNS_parallax_B",
+                cam: make(DVec3::Y * pc, DVec3::Y * pc + DVec3::X * pc, DVec3::ZERO),
+                exposure: 3e2,
+                frame: "Sol-local ICRS J2016.0".into(),
+            },
+        ]
+    };
     let mut be = AshBackend::new(
         BackendConfig { max_instances: 16, extent: (w, h), validation: true, ..Default::default() },
         None,
@@ -125,9 +172,10 @@ fn main() {
             .sources
             .iter()
             .take(32)
-            .map(|s| format!("{{\"id\":{},\"pixel\":{:?},\"flux\":{}}}", s.id, s.center, s.flux))
+            .map(|s| format!("{{\"id\":\"{}\",\"pixel\":{:?},\"flux\":{}}}", s.id, s.center, s.flux))
             .collect::<Vec<_>>()
             .join(",");
+        let dropped = selected.candidates - selected.sources.len();
         let origin = s.cam.origin.to_array();
         let forward = s.cam.forward.to_array();
         let up = s.cam.up.to_array();
@@ -139,7 +187,7 @@ fn main() {
             .map(|s| format!("{{\"pixel\":{:?},\"flux\":{}}}", s.center, s.flux))
             .unwrap_or("null".into());
         let json = format!(
-            "{{\"shot\":\"{}\",\"population\":\"seeded procedural tracers, not catalogue\",\"seed\":\"554e495645525345\",\"stars\":{},\"selected\":{},\"candidates\":{},\"size\":[{},{}],\"exposure\":{},\"epic_grade\":null,\"frame\":\"{}\",\"camera_relative_m\":[{},{},{}],\"flux_rgb\":{:?},\"cpu_red_flux_clipped\":{},\"select_ms\":{},\"prepare_ms\":{},\"gpu_ms\":{},\"render_wall_ms\":{},\"validation_errors\":{},\"device_name\":{device_json},\"timing_note\":\"offscreen measurement, CPU Vulkan is not hardware 60fps proof\",\"camera_origin_m\":{origin:?},\"camera_forward\":{forward:?},\"camera_up\":{up:?},\"fov_y_rad\":{fov},\"sol_anchor\":{sol_json},\"bright_sources\":[{bright}],\"hdr_format\":\"RGBA f32 LE integrated flux per pixel, unexposed\"}}",
+            "{{\"shot\":\"{}\",\"population\":\"{dataset}\",\"seed\":{seed_json},\"raw_catalogue_rows\":{raw_rows},\"selection_policy\":\"scan every loaded record; brightest visible flux first, exact u64 source_id tie-break; cap65536; no hard median100pc cut\",\"photometry_note\":\"GCNS: monochrome G-band relative Vega-zero flux, not RGB or bolometric luminosity; no extinction, variability or epoch propagation; translated observer inverse-square approximation from posterior median distances\",\"stars\":{},\"selected\":{},\"candidates\":{},\"dropped_visible_by_gpu_cap\":{dropped},\"size\":[{},{}],\"exposure\":{},\"epic_grade\":null,\"frame\":\"{}\",\"camera_relative_m\":[{},{},{}],\"flux_rgb\":{:?},\"cpu_red_flux_clipped\":{},\"select_ms\":{},\"prepare_ms\":{},\"gpu_ms\":{},\"render_wall_ms\":{},\"validation_errors\":{},\"device_name\":{device_json},\"timing_note\":\"offscreen measurement, CPU Vulkan is not hardware 60fps proof\",\"camera_origin_m\":{origin:?},\"camera_forward\":{forward:?},\"camera_up\":{up:?},\"fov_y_rad\":{fov},\"sol_anchor\":{sol_json},\"bright_sources\":[{bright}],\"hdr_format\":\"RGBA f32 LE integrated flux per pixel, unexposed\"}}",
             s.name,
             pop.stars.len(),
             selected.sources.len(),

@@ -2,3 +2,6 @@
 .DS_Store
 out/
 target/
+
+# Offline Python catalogue-ingest test caches
+__pycache__/

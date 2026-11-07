@@ -1,5 +1,6 @@
-//! Bounded synthetic stars; no observational catalogue or real Milky Way claim.
+//! Bounded stellar projection/selection and explicitly procedural reference population.
 use glam::DVec3;
+/// GPU submission/procedural cap, NOT an observed catalogue input-scan limit.
 pub const MAX_STARS: usize = 65_536;
 pub const AU: f64 = 149_597_870_700.0;
 pub const LY: f64 = 9.460_730_472_580_8e15;
@@ -10,8 +11,10 @@ pub const SUPPORT: f64 = 4.0 * SIGMA;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Star {
-    pub id: u32,
+    pub id: u64,
     pub pos: DVec3,
+    /// Inverse-square amplitude at 1 AU. Synthetic mode uses illustrative Lsun;
+    /// GCNS uses a G-band relative-flux proxy, never bolometric luminosity.
     pub lum: f64,
     pub rgb: [f64; 3],
 }
@@ -61,7 +64,7 @@ impl Population {
             let rgb =
                 if hot < 0.35 { [1.0, 0.55 + hot, 0.25 + hot] } else { [1.2 - hot * 0.35, 0.9, 0.65 + hot * 0.65] };
             let y = rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722;
-            stars.push(Star { id: id as u32, pos, lum: 10f64.powf(-1.0 + 6.0 * rnd()), rgb: rgb.map(|c| c / y) });
+            stars.push(Star { id: id as u64, pos, lum: 10f64.powf(-1.0 + 6.0 * rnd()), rgb: rgb.map(|c| c / y) });
         }
         Self { stars }
     }
@@ -101,7 +104,7 @@ impl Camera {
 }
 #[derive(Clone, Copy, Debug)]
 pub struct Source {
-    pub id: u32,
+    pub id: u64,
     pub center: [f64; 2],
     pub flux: f64,
     pub rgb: [f64; 3],
@@ -139,7 +142,26 @@ impl Source {
         sum / self.norm() * self.flux
     }
 }
+#[derive(Clone, Copy, Debug)]
+struct Ranked(Source);
+impl PartialEq for Ranked {
+    fn eq(&self, o: &Self) -> bool {
+        self.cmp(o) == std::cmp::Ordering::Equal
+    }
+}
+impl Eq for Ranked {}
+impl PartialOrd for Ranked {
+    fn partial_cmp(&self, o: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(o))
+    }
+}
+impl Ord for Ranked {
+    fn cmp(&self, o: &Self) -> std::cmp::Ordering {
+        o.0.flux.total_cmp(&self.0.flux).then(self.0.id.cmp(&o.0.id))
+    }
+}
 pub struct Selection {
+    heap: std::collections::BinaryHeap<Ranked>,
     pub sources: Vec<Source>,
     pub candidates: usize,
     pub rejected: usize,
@@ -151,10 +173,17 @@ impl Default for Selection {
 }
 impl Selection {
     pub fn new() -> Self {
-        Self { sources: Vec::with_capacity(MAX_STARS), candidates: 0, rejected: 0 }
+        Self {
+            heap: std::collections::BinaryHeap::with_capacity(MAX_STARS),
+            sources: Vec::with_capacity(MAX_STARS),
+            candidates: 0,
+            rejected: 0,
+        }
     }
     pub fn update(&mut self, stars: &[Star], cam: &Camera, limit: usize) {
         self.sources.clear();
+        self.heap.clear();
+        let limit = limit.min(MAX_STARS);
         self.rejected = 0;
         self.candidates = 0;
         if !cam.origin.is_finite()
@@ -173,7 +202,7 @@ impl Selection {
         }
 
         let focal = cam.height as f64 / (2.0 * (cam.fov * 0.5).tan());
-        for s in stars.iter().take(MAX_STARS) {
+        for s in stars {
             let r = cam.relative(s);
             let d2 = r.length_squared();
             let z = r.dot(cam.forward);
@@ -206,10 +235,16 @@ impl Selection {
             }
             let flux = s.lum * (AU * AU / d2);
             if flux.is_finite() && flux > 0.0 {
-                self.sources.push(Source { id: s.id, center, flux, rgb: s.rgb });
+                self.candidates += 1;
+                let next = Ranked(Source { id: s.id, center, flux, rgb: s.rgb });
+                if self.heap.len() < limit {
+                    self.heap.push(next);
+                } else if limit > 0 && next < *self.heap.peek().unwrap() {
+                    *self.heap.peek_mut().unwrap() = next;
+                }
             }
         }
-        self.candidates = self.sources.len();
+        self.sources.extend(self.heap.drain().map(|x| x.0));
         self.sources.sort_unstable_by(|a, b| b.flux.total_cmp(&a.flux).then(a.id.cmp(&b.id)));
         self.sources.truncate(limit.min(MAX_STARS));
     }
@@ -274,6 +309,15 @@ mod tests {
         let c = Camera::look_at(DVec3::ZERO, DVec3::new(0.1, 0.0, 1.0), DVec3::Y, 1.0, 128, 128).unwrap();
         a.update(&stars, &c, MAX_STARS);
         assert!((a.sources[0].flux - 1.0).abs() < 1e-12);
+    }
+    #[test]
+    fn considers_records_beyond_gpu_cap() {
+        let mut stars = vec![Star { id: 1, pos: DVec3::Z * AU, lum: 1.0, rgb: [1.0; 3] }; MAX_STARS];
+        stars.push(Star { id: 9007199254740993, pos: DVec3::Z * AU, lum: 10.0, rgb: [1.0; 3] });
+        let mut s = Selection::new();
+        s.update(&stars, &camera(), 1);
+        assert_eq!(s.sources[0].id, 9007199254740993);
+        assert_eq!(s.candidates, MAX_STARS + 1);
     }
     #[test]
     fn sol_frame_boundary() {

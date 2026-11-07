@@ -39,3 +39,37 @@ For an Apache/MIT-friendly public demo path, prefer `S2_LAYER=2016` or omit Sent
 Derived files from `geo-fetch osm-extract` (`data/geo/osm/derived/<name>/`) are ODbL. If they are ever copied into the tree (e.g. `assets/osm/<name>/`), they keep their own `LICENSE.txt` + `ATTRIBUTION.txt` and are not covered by MIT/Apache. Height grids (`terrain-grid`) carry the terrain attribution only.
 
 No Google data (Street View, satellite, 3D tiles) is used anywhere in this repository.
+
+
+## Gaia EDR3 Catalogue of Nearby Stars (external local input)
+
+The observed `universe` input is the **full GAVO `gcns.main` mirror of GCNS**, not
+synthetic stellar data and not a complete Milky Way map. Source/schema/terms:
+https://dc.g-vo.org/gcns/q/cone/info and https://dc.g-vo.org/browse/gcns/q .
+The mirror states: “Gaia Catalogue of Nearby Stars © 2023 by Richard Smart is
+licensed under CC BY-NC 4.0.” https://creativecommons.org/licenses/by-nc/4.0/ .
+This is a **noncommercial restriction**, not MIT/Apache code permission. The raw
+catalogue, derived binary, observed samples and local imagery are not committed.
+Commercial incorporation/redistribution of this acquired product (or adapted
+outputs) requires a suitable permission/licensing assessment; no such clearance
+is claimed. ESA illustrations and the paper have their own terms, not inferred
+from this table licence. The code's licence does not relicense catalogue data.
+
+Primary citation: Gaia Collaboration, R. L. Smart et al. (2021), “Gaia Early Data
+Release 3: The Gaia Catalogue of Nearby Stars”, A&A 649, A6,
+https://doi.org/10.1051/0004-6361/202039498 .
+Official release overview: https://www.cosmos.esa.int/web/gaia/edr3-gcns .
+
+Gaia acknowledgement:
+This work has made use of data from the European Space Agency (ESA) mission
+Gaia (https://www.cosmos.esa.int/gaia), processed by the Gaia Data Processing
+and Analysis Consortium (DPAC,
+https://www.cosmos.esa.int/web/gaia/dpac/consortium). Funding for the DPAC has
+been provided by national institutions, in particular the institutions
+participating in the Gaia Multilateral Agreement.
+
+Distances are GCNS Bayesian posterior estimates/quantiles, not naive 1/parallax.
+Photometric display uses an explicitly modelled achromatic Gaia G-band proxy;
+it is not calibrated bolometric luminosity or observed RGB. Static ICRS epoch
+J2016.0 positions are not propagated to the current date. Ancillary resolved
+system/cluster tables are not yet ingested. No extra Sun is inserted in GCNS.

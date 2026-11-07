@@ -12,7 +12,8 @@ const COLOR: vk::Format = vk::Format::R32G32B32A32_SFLOAT;
 pub struct Splat {
     /// xy centre in pixels, z instrument sigma pixels, w reciprocal full discrete PSF sum.
     pub position: [f32; 4],
-    /// Integrated RGB flux relative to unit solar irradiance at 1 AU; w unused.
+    /// Integrated display-channel flux in caller-declared units; w unused.
+    /// GCNS uses achromatic relative G-band flux, not bolometric solar irradiance.
     pub flux: [f32; 4],
 }
 impl Splat {

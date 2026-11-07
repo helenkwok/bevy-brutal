@@ -37,6 +37,8 @@ jobs:
           toolchain: stable
           components: rustfmt
       - run: cargo fmt --all -- --check
+      - name: Offline GCNS ingest tests (synthetic fixtures, no network)
+        run: python3 -m unittest discover -s tests/tools
 
   clippy:
     name: clippy + check

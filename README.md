@@ -6,30 +6,55 @@ Inspired by [BRUTAL](https://github.com/ahwootech/BRUTAL)'s design ideas; this i
 
 See [starter.md](starter.md) for the working notes, and [CREDITS.md](CREDITS.md) for third-party and data licences.
 
-## U1 procedural universe
+## Observed nearby universe: GCNS (data first)
 
-`cargo run --release -p render-ash --example universe -- --out out/quality/U1`
-produces named overview, inclined-disk, fixed-exposure parallax and Sol-approach
-PNGs, unexposed RGBA-f32 HDR files and JSON flux/count/timing metadata.
+The `universe` example now **requires observed external GCNS input by default**;
+it never silently substitutes generated stars. Acquire/convert the full published
+GAVO `gcns.main` mirror outside git:
 
-This is **65,536 seeded synthetic stellar tracers**, not a real Milky Way map or a
-stellar catalogue. The model includes a bulge, four broad arms, inter-arm disk and
-256 nearby tracers; arbitrary log-uniform 0.1..100,000 solar luminosity weights and
-luminance-normalized synthetic RGB colours are not a calibrated stellar population.
-One Sol anchor has unit luminosity at the existing solar frame position.
-Flux follows `luminosity * (AU / distance)^2`; positions and camera subtraction are
-f64 metres, with screen-space f32 uploads. A normalized finite square-support ±4-sigma Gaussian
-instrument PSF (sigma 0.7 output pixels) is not an inflated stellar body. Flux lost
-at the image boundary stays lost. Display exposure is explicit, not applied to HDR;
-`overview_deep` is labelled separately. No EPIC grade or fabricated gas/dust.
+```sh
+# --fetch requires an empty destination: retained originals are never overwritten.
+python3 tools/gcns_ingest.py --fetch --root /workspace/data/astro/gcns
+# With retained raw CSV + schema, conversion is offline; optional exact raw pin:
+python3 tools/gcns_ingest.py --expected-sha256 25e6b1a6dfc101e183b4e14bb9932b78828f2eaa8a5f1a61c12afb910a34ac8a
+cargo run --release -p render-ash --example universe -- --out out/quality/GCNS
+# Other local acquisition directories:
+# ... --catalogue /path/to/gcns-v1.bin
+```
 
-The pass retains a 2 MiB input buffer, pipeline and image/readback targets, caps
-submission at 65,536 and target extents at 4096². Selection/input CPU scratch is
-reused; HDR readback is borrowed until the next frame rather than copied. Explicit
-resize/free waits for completion before resource retirement. Timing JSON names the
-CPU Vulkan qualification; hardware 60fps is not established. This is a starfield
-and numeric Sol-frame approach, **not** a visual handoff into SS2 or Earth. The
-existing debug `scenes`, solar and Earth paths are unchanged.
+This is **Gaia EDR3 GCNS**, Smart et al. (2021), not a full galaxy or universe.
+The acquired main table has 331,312 rows / 74 columns; all original values,
+Bayesian distance quantiles, parallax/errors, photometry, proper motions and
+available RV/quality indicators remain in the external CSV with schema and SHA256
+manifest. The display excludes 431 rows lacking G, leaving 330,881 records.
+All loaded records are scanned; a persistent bounded heap selects the brightest
+visible 65,536 with exact u64 source-ID tie breaking. Metadata reports original,
+loaded, visible and cap-dropped counts. No first-65k catalogue truncation.
+
+Positions use posterior `dist_50` (kpc), not inverse parallax, in **right-handed
+Sol-local ICRS XYZ**, +X RA=0/Dec=0, +Y RA=90/Dec=0, +Z north pole. Epoch J2016.0
+is static: no proper-motion/RV propagation. The engine Sol anchor is only an engine
+translation origin, not an inserted catalogue Sun. No equinox is invented for ICRS.
+These standalone views stay in that local frame; binding to the legacy solar
+frame orientation is not yet a rendered handoff.
+The nominal nearby selection is not a hard median-distance sphere; some distance
+posteriors extend beyond 100 pc. No missing binaries or fainter population is invented.
+
+Display is **monochrome G-band**, `10^(-0.4 G)` relative to G=0 Vega-band flux,
+not measured RGB, bolometric luminosity or solar irradiance. A translated observer
+uses the median-distance inverse-square approximation; no extinction correction,
+variability or uncertainty sampling is claimed. The finite normalized 0.7-pixel
+instrument PSF conserves discrete source flux before viewport clipping. Display
+exposure is explicit, HDR unexposed, EPIC grade off. PNG/HDR/JSON contain reproducible
+nearby views/parallax pairs, not an invented Milky Way spiral.
+
+**Data terms differ from code:** the acquired GAVO GCNS product states CC BY-NC 4.0.
+No catalogue/derived data is bundled; commercial use/redistribution must not be
+assumed permitted. See [CREDITS.md](CREDITS.md). Ordinary tests use synthetic fixtures,
+never network or redistributed observed rows. The earlier U1 synthetic starfield
+remains an explicitly labelled reference only: add `--procedural` to run it.
+SS2/Earth/debug scenes are unchanged. Rendering remains synchronous/offscreen;
+seamless handoff and native-hardware 60fps are not established.
 
 ## DEM close-tile streaming (`earth` example)
 
