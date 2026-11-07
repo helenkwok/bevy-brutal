@@ -45,7 +45,7 @@ struct PParams {               // == render_ash::planet::PlanetParamsGpu
     float4 graft_e;            // xyz vista east, w graft outer radius (rad)
     float4 graft_n;            // xyz vista north, w outer level half extent (km)
     float4 graft_l;            // x inner level half extent (km), y albedo gain, z AO strength, w texels per level side
-    float4 meso2;              // round 4 far-footprint clouds: x coverage gamma at multi-km footprints (0 = planet.w everywhere); y = DEM close graft half extent (km), 0 = off (layer 2)
+    float4 meso2;              // round 4 far-footprint clouds: x coverage gamma at multi-km footprints (0 = planet.w everywhere); y = DEM close graft half extent (km), 0 = off (layer 2); zw = close east/south offset km
     float4 graft_t;            // large-scale tint toward the real Earth: x strength, y inner radius (rad; full by graft.w), z real albedo LOD, w graft LOD
     float4 haze;               // round 6 marine haze over open ocean: x vertical AOD at 550 nm (0 = off), y Angstrom exponent, z single-scattering albedo, w water-mask texel (km)
     float4 cloud3;             // round 7: x cloud-edge feather scale (km, 0 = off), y feather mix, z clear-window edge noise (0 = round circle), w haze dust (blue absorption, 0 = off)
@@ -898,7 +898,7 @@ float3 surface_radiance(float3 P, float3 rd, float3 up, float h) {
             // objects (≤ 6.8 m texels) resolve under the camera. meso2.y = half extent km.
             float hc = p.meso2.y;
             if (hc > 0.0) {
-                float2 uc = dxz / (2.0 * hc) + 0.5;
+                float2 uc = (dxz - p.meso2.zw) / (2.0 * hc) + 0.5;
                 float lc = log2(max(g_fp * p.graft_l.w / (2.0 * hc), 1e-4));
                 float ec = max(abs(uc.x - 0.5), abs(uc.y - 0.5)) * 2.0;
                 float wc = 1.0 - smoothstep(0.86, 0.97, ec);

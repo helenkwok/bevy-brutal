@@ -372,6 +372,79 @@ impl DemPlacement {
         self.bake_graft_close(sun_planet, size, planet_height, None)
     }
 
+    /// Camera forward ground intersection in f64 planet metres, returned in graft east/south
+    /// metres. Terrain-height refinement keeps oblique views on the DEM. Sky, grazing rays,
+    /// cameras below ground, and hits outside usable DEM coverage fall back to outer/mid.
+    pub fn look_at_world(&self, cam: DVec3, forward: DVec3) -> Option<[f64; 2]> {
+        if !cam.is_finite() || !forward.is_finite() {
+            return None;
+        }
+        let rd = forward.try_normalize()?;
+        let sphere_hit = |radius: f64| -> Option<DVec3> {
+            let b = cam.dot(rd);
+            let q = b * b - (cam.length_squared() - radius * radius);
+            if q <= 0.0 {
+                return None;
+            }
+            let t = -b - q.sqrt();
+            if t <= 0.0 {
+                return None;
+            }
+            Some(cam + rd * t)
+        };
+        let mut hit = sphere_hit(EARTH_RADIUS_M)?;
+        for _ in 0..4 {
+            let (e, n) = self.dir_to_plane(hit.normalize());
+            let h = self.height(e, n, 0.0)?;
+            hit = sphere_hit(EARTH_RADIUS_M + h)?;
+        }
+        let d = hit.normalize();
+        if self.weight_total(d) <= 0.0 {
+            return None;
+        }
+        let (x, z, _) = self.map.dir_to_world(d);
+        Some([x, z])
+    }
+
+    /// One indivisible streamed row, offset from the unchanged DEM graft origin in east/south
+    /// metres. Uses exactly the static bake's normals/shadows/palette and texel footprint.
+    pub fn bake_close_row(
+        &self,
+        sun: DVec3,
+        size: u32,
+        half: f64,
+        offset: [f64; 2],
+        row: u32,
+        planet_height: &(dyn Fn(DVec3) -> f64 + Sync),
+    ) -> (Vec<u8>, Vec<u8>) {
+        assert!(size > 0 && row < size && half.is_finite() && half > 0.0);
+        let s = sun.normalize();
+        let [ae, an, au] = self.enu.axes();
+        let s_enu = DVec3::new(s.dot(ae), s.dot(an), s.dot(au));
+        let horiz = DVec3::new(s_enu.x, s_enu.y, 0.0).normalize_or_zero();
+        let tan_el = s_enu.z / s_enu.x.hypot(s_enu.y).max(1e-9);
+        let step = 2.0 * half / size as f64;
+        let z = offset[1] - half + (row as f64 + 0.5) * step;
+        // A row remains the scheduling quantum, but share expensive edge/shadow texels across
+        // the existing Rayon pool. Ordered collection keeps output identical to the static bake.
+        use rayon::prelude::*;
+        let samples: Vec<_> = (0..size)
+            .into_par_iter()
+            .with_min_len(64)
+            .map(|i| {
+                let x = offset[0] - half + (i as f64 + 0.5) * step;
+                self.texel(x, z, step, s_enu, horiz, tan_el, planet_height)
+            })
+            .collect();
+        let mut a = Vec::with_capacity(size as usize * 4);
+        let mut b = Vec::with_capacity(size as usize * 4);
+        for (aa, bb) in samples {
+            a.extend_from_slice(&aa);
+            b.extend_from_slice(&bb);
+        }
+        (a, b)
+    }
+
     /// [`Self::bake_graft`] with an optional close half extent (m). `close_half_m` is clamped below
     /// the mid half so the streamed tile is always the finest concentric level.
     pub fn bake_graft_close(
@@ -382,10 +455,6 @@ impl DemPlacement {
         close_half_m: Option<f64>,
     ) -> GraftFile {
         let s = sun_planet.normalize();
-        let [ae, an, au] = self.enu.axes();
-        let s_enu = DVec3::new(s.dot(ae), s.dot(an), s.dot(au));
-        let horiz = DVec3::new(s_enu.x, s_enu.y, 0.0).normalize_or_zero();
-        let tan_el = s_enu.z / s_enu.x.hypot(s_enu.y).max(1e-9);
         let mid = 0.5 * self.r_out_m;
         let mut halves = vec![1.1 * self.r_out_m, mid];
         if let Some(c) = close_half_m {
@@ -395,25 +464,13 @@ impl DemPlacement {
         let mut levels = Vec::new();
         for half in halves {
             let n = size as usize;
-            let step = 2.0 * half / size as f64;
             let mut albedo = vec![0u8; n * n * 4];
             let mut aux = vec![0u8; n * n * 4];
             let rows: Vec<(Vec<u8>, Vec<u8>)> = {
                 use rayon::prelude::*;
-                (0..n)
+                (0..size)
                     .into_par_iter()
-                    .map(|j| {
-                        let mut ra = Vec::with_capacity(n * 4);
-                        let mut rx = Vec::with_capacity(n * 4);
-                        for i in 0..n {
-                            let x = -half + (i as f64 + 0.5) * step;
-                            let z = -half + (j as f64 + 0.5) * step;
-                            let (a, b) = self.texel(x, z, step, s_enu, horiz, tan_el, planet_height);
-                            ra.extend_from_slice(&a);
-                            rx.extend_from_slice(&b);
-                        }
-                        (ra, rx)
-                    })
+                    .map(|j| self.bake_close_row(s, size, half, [0.0; 2], j, planet_height))
                     .collect()
             };
             for (j, (ra, rx)) in rows.into_iter().enumerate() {
@@ -590,6 +647,54 @@ mod tests {
         }
         let g = DemGrid::new(n, n, s, x0, x0, h).unwrap();
         DemPlacement::new(Enu::new(Geodetic::new(-34.9, 138.6, 0.0)), g)
+    }
+
+    #[test]
+    fn oblique_look_at_tracks_ground_not_camera_nadir() {
+        let p = grid();
+        let d = p.plane_to_dir(4000.0, 2000.0);
+        let (e, n) = p.dir_to_plane(d);
+        let target = d * (EARTH_RADIUS_M + p.height(e, n, 0.0).unwrap());
+        let cam = p.centre_dir() * (EARTH_RADIUS_M + 2500.0);
+        let hit = p.look_at_world(cam, target - cam).unwrap();
+        let (x, z, _) = p.graft_map().dir_to_world(d);
+        assert!((hit[0] - x).hypot(hit[1] - z) < 5.0, "look-at {hit:?} vs {x},{z}");
+        assert!(hit[0].abs() > 3000.0, "must not track camera nadir/DEM origin");
+    }
+    #[test]
+    fn look_at_near_dem_edge_fades_to_far_coverage() {
+        let p = grid();
+        for (east, valid) in [(8500.0, true), (9600.0, false), (9700.0, false)] {
+            let d = p.plane_to_dir(east, 0.0);
+            assert_eq!(p.look_at_world(d * (EARTH_RADIUS_M + 2000.0), -d).is_some(), valid);
+        }
+        let d = p.centre_dir();
+        assert!(p.look_at_world(d * (EARTH_RADIUS_M - 100.0), -d).is_none());
+        assert!(p.look_at_world(d * (EARTH_RADIUS_M + 2000.0), DVec3::ZERO).is_none());
+    }
+    #[test]
+    fn offset_rows_sample_same_world_without_moving_dem() {
+        let p = grid();
+        let origin = p.centre_dir();
+        let sun = origin;
+        let a = p.bake_close_row(sun, 4, 100.0, [100.0, 0.0], 1, &|_| 0.0);
+        let b = p.bake_close_row(sun, 4, 100.0, [0.0, 0.0], 1, &|_| 0.0);
+        assert_eq!(&a.0[..8], &b.0[8..]);
+        assert_eq!(&a.1[..8], &b.1[8..]);
+        assert_eq!(p.centre_dir(), origin);
+    }
+    #[test]
+    fn look_at_is_f64_ground_intersection_and_rejects_sky_or_outside() {
+        let p = grid();
+        let ground = p.plane_to_dir(400.0, 200.0);
+        let cam = ground * (EARTH_RADIUS_M + 2000.0);
+        let hit = p.look_at_world(cam, -ground).unwrap();
+        let want = p.graft_map().dir_to_world(ground);
+        assert!((hit[0] - want.0).abs() < 0.1 && (hit[1] - want.1).abs() < 0.1);
+        assert!(p.look_at_world(cam, ground).is_none());
+        assert!(p.look_at_world(DVec3::splat(f64::NAN), -ground).is_none());
+        let far = p.plane_to_dir(1e6, 1e6);
+        assert!(p.look_at_world(far * (EARTH_RADIUS_M + 2000.0), -far).is_none());
     }
 
     #[test]

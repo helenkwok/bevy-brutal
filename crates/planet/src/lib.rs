@@ -29,3 +29,6 @@ pub mod solar;
 
 /// Mean Earth radius (m).
 pub const EARTH_RADIUS_M: f64 = 6_371_000.0;
+
+/// Bounded close-graft tile streaming.
+pub mod stream;

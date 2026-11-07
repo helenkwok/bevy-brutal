@@ -27,10 +27,14 @@
 //! baked per shot for its sun. `DEM_R=r_full_km,r_out_km`, `DEM_TEX=<size>`, `DEM_TINT`, `DEM_ALB`.
 //! `OSM=<geo-fetch osm-extract dir>[,cell_m]` (with DEM) drapes OSM roads / buildings / water /
 //! landuse colour over the DEM palette (`planet::drape`, 4 m cells by default).
-//! `DEM_CLOSE_KM=<half>` streams a third concentric graft tile (default 3 km with OSM, 0 = off)
+//! `DEM_CLOSE_KM=<half>` streams a third look-at-centred graft tile (default 3 km with OSM, 0 = off)
 //! so Fragments-style building objects LOD (`BuildingLod`, ≤ 6.8 m texels) can show; the shader
-//! reads it as array layer 2 via `meso2.y`. Shots `DEM_adelaide_*` (use `HOLE=-34.9,138.6,1.5`
-//! for a clear sky over the patch); `DEM_adelaide_objects` is a low nadir over Norwood that
+//! reads it as array layer 2 via `meso2.yzw` (half, east, south). `DEM_BAKE_ROWS=32`,
+//! `DEM_BAKE_MS=4` bound row baking per rendered frame; `DEM_CACHE_TILES=3` complete CPU tiles
+//! plus one partial. `REPEAT=N` advances real render frames (one screenshot may still be warming).
+//! `--shot` accepts an ordered comma-separated route, sharing the cache for an unchanged sun.
+//! Shots `DEM_adelaide_*` (use `HOLE=-34.9,138.6,1.5`
+//! for a clear sky over the patch); `DEM_adelaide_objects` is a low nadir over Toorak Gardens that
 //! fills the close tile with individual roofs (Toorak Gardens / Rose Park).
 //!
 //! Solar system round 1: `STARS=0` (no star splat) and `HDR_OUT=1` (`<name>.hdr.bin`, the exposed
@@ -42,6 +46,8 @@
 //! `GRAFT_TEX=raw` keeps the round-4 RGBA8 upload straight from the .grf.
 #[path = "descent_parts/graft.rs"]
 mod graft;
+#[path = "earth_parts/streaming.rs"]
+mod streaming;
 use glam::{DVec3, DVec4, Mat4};
 use planet::cube::latlon_dir;
 use planet::ktx2::Ktx2;
@@ -286,6 +292,48 @@ fn shots() -> Vec<Shot> {
             night_gain: 1.5e-6,
             gmst: 0.0,
         },
+        Shot {
+            name: "DEM_adelaide_cbd",
+            lat: -34.9285,
+            lon: 138.600,
+            alt_km: 1.8,
+            heading: 0.0,
+            pitch: -90.0,
+            fov_y: 40.0,
+            sun_lat: -15.0,
+            sun_lon: 86.0,
+            exposure: 2.6,
+            night_gain: 1.5e-6,
+            gmst: 0.0,
+        },
+        Shot {
+            name: "DEM_adelaide_coast",
+            lat: -34.920,
+            lon: 138.505,
+            alt_km: 1.8,
+            heading: 0.0,
+            pitch: -90.0,
+            fov_y: 40.0,
+            sun_lat: -15.0,
+            sun_lon: 86.0,
+            exposure: 2.6,
+            night_gain: 1.5e-6,
+            gmst: 0.0,
+        },
+        Shot {
+            name: "DEM_adelaide_hills",
+            lat: -34.970,
+            lon: 138.690,
+            alt_km: 1.8,
+            heading: 0.0,
+            pitch: -90.0,
+            fov_y: 40.0,
+            sun_lat: -15.0,
+            sun_lon: 86.0,
+            exposure: 2.6,
+            night_gain: 1.5e-6,
+            gmst: 0.0,
+        },
     ]
 }
 
@@ -319,12 +367,8 @@ fn camera(s: &Shot) -> Cam {
     Cam { pos, fwd, right, up }
 }
 
-/// Bake + upload the DEM patch's graft textures for sun direction `sun` (planet frame) and return
-/// the five graft parameter vectors (`graft`, `graft_e`, `graft_n`, `graft_l`, `graft_t`).
-/// Albedo gain 1 and a full-disc tint (real albedo at LOD 0 over the bake's ~2.4 km low-pass):
-/// the palette only adds the DEM's sub-texel variation to the Blue Marble colour.
-/// Bake + upload DEM graft levels. Returns `(graft param vectors, close_half_km)` where
-/// `close_half_km` is 0 when the close streamed tile is off (shader skips layer 2).
+/// Bake static outer/mid coverage once per sun, then progressively stream the close layer.
+/// Tint preserves the Blue Marble large-scale colour; close UVs move independently of DEM origin.
 fn dem_graft(
     be: &mut AshBackend,
     tex: &mut render_ash::planet::PlanetTextures,
@@ -332,11 +376,11 @@ fn dem_graft(
     k: f64,
     sun: DVec3,
     planet_height: &(dyn Fn(DVec3) -> f64 + Sync),
-) -> ([[f32; 4]; 5], f32) {
+) -> streaming::DemStream {
     let env = |k: &str| std::env::var(k).ok().and_then(|v| v.parse::<f64>().ok());
     let size = env("DEM_TEX").unwrap_or(1024.0) as u32;
-    // DEM_CLOSE_KM: half extent of the streamed close tile. Default 2 km when an OSM drape is
-    // present (objects LOD needs ≤ 6.8 m texels → 2 km @ 2048 = 1.95 m); 0 disables.
+    assert!(size.is_power_of_two() && size <= 4096, "DEM_TEX must be a power of two in 1..=4096");
+    // DEM_CLOSE_KM: unchanged default 3 km half extent with OSM. 0 disables streaming.
     let close_m = match env("DEM_CLOSE_KM") {
         Some(v) if v <= 0.0 => None,
         Some(v) => Some(v * 1000.0),
@@ -344,41 +388,39 @@ fn dem_graft(
         None => None,
     };
     let t = Instant::now();
-    let g = pl.bake_graft_close(sun, size, planet_height, close_m);
+    let g = pl.bake_graft(sun, size, planet_height);
     let bake_ms = t.elapsed().as_secs_f64() * 1e3;
     let alb: Vec<Vec<Vec<u8>>> =
         g.levels.iter().map(|l| render_ash::planet::rgba8_mips(l.size, &l.albedo, true)).collect();
     let aux: Vec<Vec<Vec<u8>>> =
         g.levels.iter().map(|l| render_ash::planet::rgba8_mips(l.size, &l.aux, false)).collect();
     be.planet_set_graft(tex, size, &alb, &aux).expect("upload DEM graft");
-    let close_km = g.levels.get(2).map(|l| (l.half_m / 1000.0) as f32).unwrap_or(0.0);
+    let close_half = close_m.map(|h| h.clamp(1.0, g.levels[1].half_m * 0.95)).unwrap_or(0.0);
     let steps: String =
         g.levels.iter().map(|l| format!("{:.2}m", 2.0 * l.half_m / l.size as f64)).collect::<Vec<_>>().join(", ");
     eprintln!(
         "dem graft: {} x {size}^2 (texels {steps}) baked in {bake_ms:.0} ms, {:.1} MB{}",
         g.levels.len(),
         tex.graft_bytes as f64 / 1048576.0,
-        if close_km > 0.0 { format!(", close {close_km:.2} km") } else { String::new() }
+        if close_half > 0.0 { format!(", stream close {:.2} km", close_half / 1000.0) } else { String::new() }
     );
     let m = pl.graft_map();
     let (c, e, n) = (m.centre * k, m.east, m.north);
     let r = planet::EARTH_RADIUS_M;
-    (
+    let params = [
+        [c.x as f32, c.y as f32, c.z as f32, (pl.r_full_m / r) as f32],
+        [e.x as f32, e.y as f32, e.z as f32, (pl.r_out_m / r) as f32],
+        [n.x as f32, n.y as f32, n.z as f32, (g.levels[0].half_m / 1000.0) as f32],
+        [(g.levels[1].half_m / 1000.0) as f32, env("DEM_ALB").unwrap_or(1.0) as f32, 0.0, size as f32],
         [
-            [c.x as f32, c.y as f32, c.z as f32, (pl.r_full_m / r) as f32],
-            [e.x as f32, e.y as f32, e.z as f32, (pl.r_out_m / r) as f32],
-            [n.x as f32, n.y as f32, n.z as f32, (g.levels[0].half_m / 1000.0) as f32],
-            [(g.levels[1].half_m / 1000.0) as f32, env("DEM_ALB").unwrap_or(1.0) as f32, 0.0, size as f32],
-            [
-                env("DEM_TINT").unwrap_or(1.0) as f32,
-                // inner radius -1 rad: the tint is ~1 over the whole disc
-                -1.0,
-                0.0,
-                (2400.0 * size as f64 / (2.0 * g.levels[0].half_m)).log2() as f32,
-            ],
+            env("DEM_TINT").unwrap_or(1.0) as f32,
+            // inner radius -1 rad: the tint is ~1 over the whole disc
+            -1.0,
+            0.0,
+            (2400.0 * size as f64 / (2.0 * g.levels[0].half_m)).log2() as f32,
         ],
-        close_km,
-    )
+    ];
+    streaming::DemStream::new(sun, params, size, close_half, (alb, aux))
 }
 
 fn planes(c: &Cam, fov_y: f64, aspect: f64) -> [DVec4; 6] {
@@ -527,7 +569,14 @@ fn main() {
                 gmst: 0.0,
             }]
         }
-        None => shots().into_iter().filter(|s| shot == "all" || s.name.ends_with(&shot) || s.name == shot).collect(),
+        None => {
+            let all = shots();
+            shot.split(',')
+                .flat_map(|name| {
+                    all.iter().copied().filter(move |s| name == "all" || s.name.ends_with(name) || s.name == name)
+                })
+                .collect()
+        }
     };
     // terrain flattening under the descent's mountains layer (FLATTEN=lat,lon,r0_km,r1_km,h_m)
     // optional 6th value: strength 0..1 (the descent's ground weight: the terrain morphs flat as
@@ -676,6 +725,7 @@ fn main() {
         let c = latlon_dir(v[0], v[1]);
         [c.x as f32, c.y as f32, c.z as f32, v[2].to_radians() as f32]
     });
+    let mut dem_stream: Option<streaming::DemStream> = None;
     for s in shot_list {
         let mut s = s;
         if let Some(v) = env("EXPOSURE") {
@@ -723,18 +773,19 @@ fn main() {
         let proj = render_ash::quality::reverse_z_infinite(fov as f32, aspect as f32, near);
         let vp = proj * view_m;
         let sun = latlon_dir(s.sun_lat, s.sun_lon);
-        // DEM: the graft textures are baked per shot (the cast shadows follow its sun);
-        // close_km > 0 streams BuildingLod objects via graft array layer 2 (meso2.y).
-        let (graft_params, close_km) = match &dem {
+        // Far/mid are fixed per sun; close work advances immediately before each render.
+        let graft_params = match &dem {
             Some((pl, k)) if *k > 0.0 => {
-                let (g, c) = dem_graft(&mut be, &mut tex, pl, *k, sun, &height_at);
-                (Some(g), c)
+                if dem_stream.as_ref().is_none_or(|st| st.sun != sun) {
+                    dem_stream = Some(dem_graft(&mut be, &mut tex, pl, *k, sun, &height_at));
+                }
+                Some(dem_stream.as_ref().unwrap().params)
             }
-            _ => (graft_params, 0.0),
+            _ => graft_params,
         };
         let alt_km = (c.pos.length() / 1000.0) - R_KM;
         let ty = (fov / 2.0).tan();
-        let p = PlanetParamsGpu {
+        let mut p = PlanetParamsGpu {
             view_proj: vp.to_cols_array_2d(),
             cam_km: [(c.pos.x / 1000.0) as f32, (c.pos.y / 1000.0) as f32, (c.pos.z / 1000.0) as f32, alt_km as f32],
             sun: [sun.x as f32, sun.y as f32, sun.z as f32, 0.004_65],
@@ -789,7 +840,7 @@ fn main() {
             ],
             // round 4 (EPIC cloud fraction): far coverage gamma; MESO_GAMMA=0 MESO_FINE=0
             // MESO_BIAS=-0.7 = round 3
-            meso2: [env("MESO_GAMMA").unwrap_or(0.9) as f32, close_km, 0.0, 0.0],
+            meso2: [env("MESO_GAMMA").unwrap_or(0.9) as f32, 0.0, 0.0, 0.0],
             thaw: flatten
                 .map_or([0.0; 4], |(c, _, a1, _, k)| [(c.x * k) as f32, (c.y * k) as f32, (c.z * k) as f32, a1 as f32]),
             graft: graft_params.map_or([0.0; 4], |g| g[0]),
@@ -814,20 +865,30 @@ fn main() {
             ],
         };
         let (haze, cloud3) = (p.haze, p.cloud3);
-        let frame =
-            PlanetFrame { width: rw, height: rh, params: p, patches: &patches, masks: &masks, vertices: &vertices };
         let tr = Instant::now();
-        let (px, t) = be.render_planet(&tex, &frame).expect("render planet");
-        let render_ms = tr.elapsed().as_secs_f64() * 1e3;
-        // REPEAT=n: render n-1 more times, report the last (warm) GPU time next to the first (cold)
-        let cold_gpu_ms = t.gpu_ms;
-        let (px, t) = {
-            let mut last = (px, t);
-            for _ in 1..std::env::var("REPEAT").ok().and_then(|v| v.parse::<u32>().ok()).unwrap_or(1) {
-                last = be.render_planet(&tex, &frame).expect("render planet");
+        let mut render = |p: &mut PlanetParamsGpu| {
+            if let (Some(st), Some((pl, _))) = (&mut dem_stream, &dem) {
+                let close = st.frame(&mut be, &mut tex, pl, c.pos, c.fwd, &height_at);
+                p.meso2[1..].copy_from_slice(&close);
             }
-            last
+            let frame = PlanetFrame {
+                width: rw,
+                height: rh,
+                params: *p,
+                patches: &patches,
+                masks: &masks,
+                vertices: &vertices,
+            };
+            be.render_planet(&tex, &frame).expect("render planet")
         };
+        let (px, t) = render(&mut p);
+        let cold_gpu_ms = t.gpu_ms;
+        let mut last = (px, t);
+        for _ in 1..std::env::var("REPEAT").ok().and_then(|v| v.parse::<u32>().ok()).unwrap_or(1) {
+            last = render(&mut p);
+        }
+        let (px, t) = last;
+        let render_ms = tr.elapsed().as_secs_f64() * 1e3;
         // stars: physical flux relative to the sun (illuminance 1), spread over a 2x2 texel kernel
         let mut hdr = px;
         // STARS=0 (solar round 1, the system renderer's Earth handoff): no star splat here, the

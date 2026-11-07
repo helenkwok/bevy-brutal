@@ -270,3 +270,43 @@ fn cloud_window_clears_and_far_deck_gets_structure() {
     let (e1, _) = message_counts();
     assert_eq!(e1, e0, "validation errors");
 }
+
+/// The close layer UV origin moves independently of the fixed DEM/far graft origin.
+#[test]
+fn close_graft_offset_changes_only_near_coverage() {
+    let mut be = match AshBackend::new(
+        BackendConfig { max_instances: 16, extent: (96, 96), validation: true, ..Default::default() },
+        None,
+    ) {
+        Ok(b) => {
+            common::check_validation(&b.ctx);
+            b
+        }
+        Err(e) => {
+            common::skip_or_fail("AshBackend::new", &e);
+            return;
+        }
+    };
+    let pk = pack();
+    let mut tex = be.planet_upload(&pk).unwrap();
+    let layer = |c: [u8; 4]| render_ash::planet::rgba8_mips(8, &c.repeat(64), true);
+    let alb = vec![layer([120, 120, 120, 255]), layer([120, 120, 120, 255]), layer([240, 30, 30, 255])];
+    let aux = vec![render_ash::planet::rgba8_mips(8, &[128u8, 128, 255, 255].repeat(64), false); 3];
+    be.planet_set_graft(&mut tex, 8, &alb, &aux).unwrap();
+    let edit = |p: &mut PlanetParamsGpu, offset: f32, half: f32| {
+        p.graft = [1.0, 0.0, 0.0, 0.05];
+        p.graft_e = [0.0, 1.0, 0.0, 0.1];
+        p.graft_n = [0.0, 0.0, 1.0, 500.0];
+        p.graft_l = [250.0, 1.0, 0.0, 8.0];
+        p.meso2 = [0.0, half, offset, 0.0];
+    };
+    let near = render_with(&mut be, &tex, &pk, 2.0, DVec3::X, 1.0, 0.0, &|p| edit(p, 0.0, 5.0));
+    let away = render_with(&mut be, &tex, &pk, 2.0, DVec3::X, 1.0, 0.0, &|p| edit(p, 100.0, 5.0));
+    let far = render_with(&mut be, &tex, &pk, 2.0, DVec3::X, 1.0, 0.0, &|p| edit(p, 0.0, 0.0));
+    let mean = |px: &[[f32; 4]]| px.iter().map(|q| q[0] as f64 - q[1] as f64).sum::<f64>() / px.len() as f64;
+    assert!(mean(&near) > mean(&away) + 0.01, "close tile did not move: {} {}", mean(&near), mean(&away));
+    assert_eq!(away, far, "outside close tile must preserve far/mid coverage");
+    be.planet_free(tex);
+    drop(be);
+    assert_eq!(message_counts().0, 0, "validation errors including resource retirement");
+}

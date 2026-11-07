@@ -88,6 +88,7 @@ pub struct PlanetParamsGpu {
     pub graft_l: [f32; 4],
     /// Round-4 far-footprint clouds: x = the coverage gamma at multi-km footprints (eased in over
     /// the meso regime's 0.6 .. 2.5 km; 0 = `planet.w` everywhere, round 3).
+    /// x cloud coverage gamma; y close graft half km; zw close graft east/south offset km.
     pub meso2: [f32; 4],
     /// Large-scale tint of the graft toward the real Earth near its edge: x strength, y inner
     /// radius (rad; full by `graft.w`), z real-albedo LOD, w graft-albedo LOD.
