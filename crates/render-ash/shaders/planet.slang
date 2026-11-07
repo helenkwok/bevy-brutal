@@ -45,7 +45,7 @@ struct PParams {               // == render_ash::planet::PlanetParamsGpu
     float4 graft_e;            // xyz vista east, w graft outer radius (rad)
     float4 graft_n;            // xyz vista north, w outer level half extent (km)
     float4 graft_l;            // x inner level half extent (km), y albedo gain, z AO strength, w texels per level side
-    float4 meso2;              // round 4 far-footprint clouds: x coverage gamma at multi-km footprints (0 = planet.w everywhere)
+    float4 meso2;              // round 4 far-footprint clouds: x coverage gamma at multi-km footprints (0 = planet.w everywhere); y = DEM close graft half extent (km), 0 = off (layer 2)
     float4 graft_t;            // large-scale tint toward the real Earth: x strength, y inner radius (rad; full by graft.w), z real albedo LOD, w graft LOD
     float4 haze;               // round 6 marine haze over open ocean: x vertical AOD at 550 nm (0 = off), y Angstrom exponent, z single-scattering albedo, w water-mask texel (km)
     float4 cloud3;             // round 7: x cloud-edge feather scale (km, 0 = off), y feather mix, z clear-window edge noise (0 = round circle), w haze dust (blue absorption, 0 = off)
@@ -64,7 +64,7 @@ struct PPush {
 [[vk::binding(3, 0)]] SamplerCube tClouds;   // BC5 (KTX2): r cloud map, g cloud-top km x 20 / 255 (0 = unknown); PLN1: aux .r, g = 0
 [[vk::binding(4, 0)]] SamplerCube tMasks;    // BC5 (KTX2) / BC7 aux .gb swizzled (PLN1): r ice, g ocean depth / 8 km
 [[vk::binding(5, 0)]] Sampler3D tNoise;      // RGBA8 128^3, repeat: Perlin-Worley + 3 Worley fBm octaves
-[[vk::binding(6, 0)]] Sampler2DArray tGraftAlb; // shared Alps: layer 0 outer, 1 inner; sRGB albedo
+[[vk::binding(6, 0)]] Sampler2DArray tGraftAlb; // shared Alps / DEM: layer 0 outer, 1 mid, 2 optional close; sRGB albedo
 [[vk::binding(7, 0)]] Sampler2DArray tGraftAux; // r, g world normal x, z; b sun visibility; a AO
 
 static const float PI = 3.14159265;
@@ -893,6 +893,19 @@ float3 surface_radiance(float3 P, float3 rd, float3 up, float h) {
             if (wi > 0.0) {
                 ga = lerp(ga, tGraftAlb.SampleLevel(float3(ui, 1.0), li), wi);
                 gb = lerp(gb, tGraftAux.SampleLevel(float3(ui, 1.0), li), wi);
+            }
+            // DEM close streamed tile (layer 2): finer concentric level so OSM BuildingLod
+            // objects (≤ 6.8 m texels) resolve under the camera. meso2.y = half extent km.
+            float hc = p.meso2.y;
+            if (hc > 0.0) {
+                float2 uc = dxz / (2.0 * hc) + 0.5;
+                float lc = log2(max(g_fp * p.graft_l.w / (2.0 * hc), 1e-4));
+                float ec = max(abs(uc.x - 0.5), abs(uc.y - 0.5)) * 2.0;
+                float wc = 1.0 - smoothstep(0.86, 0.97, ec);
+                if (wc > 0.0) {
+                    ga = lerp(ga, tGraftAlb.SampleLevel(float3(uc, 2.0), lc), wc);
+                    gb = lerp(gb, tGraftAux.SampleLevel(float3(uc, 2.0), lc), wc);
+                }
             }
             float2 nxz = gb.rg * 2.0 - 1.0;
             float3 gnw = normalize(p.graft_e.xyz * nxz.x + gc * sqrt(saturate(1.0 - dot(nxz, nxz))) - p.graft_n.xyz * nxz.y);

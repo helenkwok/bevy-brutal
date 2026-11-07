@@ -13,5 +13,14 @@ bytemuck.workspace = true
 mem.workspace = true
 tracy-client.workspace = true
 
+[dev-dependencies]
+# DEM preview example: read `geo-fetch terrain-grid` output (no network features needed).
+geo-fetch = { workspace = true, default-features = false }
+glam.workspace = true
+png = "0.18"
+
+[[example]]
+name = "dem_preview"
+
 [lints]
 workspace = true

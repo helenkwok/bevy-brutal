@@ -32,7 +32,7 @@ pub use pass::{
     AshBackend, BackendConfig, FrameStats, MAX_MESHES, SCAN_TILE, ScanMode, ScanPath, cpu_exclusive_scan,
     plan_subgroup_scan,
 };
-pub use surface::{SURFACE_VERTEX_BYTES, TerrainGpuConfig, UploadOutcome, UploadStats};
+pub use surface::{SURFACE_VERTEX_BYTES, SurfacePalette, TerrainGpuConfig, TerrainSlotKey, UploadOutcome, UploadStats};
 
 /// Valid range for `BackendConfig::frames_in_flight`.
 pub const MIN_FRAMES_IN_FLIGHT: usize = 2;

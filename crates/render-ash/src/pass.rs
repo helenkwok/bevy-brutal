@@ -26,7 +26,8 @@ use crate::context::{GpuBuffer, GpuImage, SubgroupInfo, VkContext, WindowHandles
 use crate::cull::frustum_planes;
 use crate::mesh::{MeshData, MeshInfoGpu, MeshVertex, builtin_meshes};
 use crate::surface::{
-    SURFACE_VERTEX_BYTES, StaticMesh, TerrainGpu, TerrainGpuConfig, UploadOutcome, UploadStats, upload_static,
+    SURFACE_VERTEX_BYTES, StaticMesh, SurfacePalette, TerrainGpu, TerrainGpuConfig, TerrainSlotKey, UploadOutcome,
+    UploadStats, upload_static,
 };
 use crate::{BackendError, MAX_FRAMES_IN_FLIGHT, MIN_FRAMES_IN_FLIGHT};
 
@@ -63,7 +64,8 @@ struct FrameGpu {
     planes: [[f32; 4]; 6],
     instance_count: u32,
     mesh_count: u32,
-    _pad: [u32; 2],
+    /// Surface palette height range in metres (`hi <= lo`: noise palette); see `SurfacePalette`.
+    surface_range: [f32; 2],
 }
 
 /// Mirrors `Push` in shaders/common.slang (9 buffer device addresses, 72 bytes).
@@ -356,6 +358,7 @@ pub struct AshBackend {
     /// Test hook: extra (semaphore, value) the next submit waits on (see `gate_next_submit`).
     gate: Option<(vk::Semaphore, u64)>,
     terrain: Option<TerrainGpu>,
+    surface_palette: SurfacePalette,
     /// Quality-frame shadow maps kept between frames (cascade caching).
     pub(crate) qshadow: Option<crate::quality::QShadowCache>,
     /// Earth round 5: the quality pass's ground map (real imagery albedo), see
@@ -701,6 +704,7 @@ impl AshBackend {
             last_stats: None,
             gate: None,
             terrain: None,
+            surface_palette: SurfacePalette::Noise,
             qshadow: None,
             qground: None,
             statics: Vec::new(),
@@ -756,27 +760,43 @@ impl AshBackend {
         Ok(())
     }
 
-    /// Stage one chunk's vertices (`TerrainVertex`/24-byte pos+normal) for `coord`. The copy is
-    /// recorded into the next `render()`. Returns where it went and what was evicted.
+    /// Stage one chunk's vertices (`TerrainVertex`/24-byte pos+normal, exactly `verts_per_slot`)
+    /// for `coord` (`[i32; 2]` = LOD 0, or a `TerrainSlotKey`). The copy is recorded into the next
+    /// `render()`. Returns where it went and what was evicted.
     pub fn upload_terrain_chunk<V: bytemuck::Pod>(
         &mut self,
-        coord: [i32; 2],
+        coord: impl Into<TerrainSlotKey>,
         vertices: &[V],
     ) -> Result<UploadOutcome, BackendError> {
         const { assert!(size_of::<V>() == SURFACE_VERTEX_BYTES) };
         let completed = self.completed_frame()?;
         let next = self.frame_number + 1;
         let t = self.terrain.as_mut().ok_or(BackendError::BadConfig("terrain not enabled"))?;
-        t.upload(coord, bytemuck::cast_slice(vertices), next, completed)
+        t.upload(coord.into(), bytemuck::cast_slice(vertices), next, completed)
     }
 
-    pub fn terrain_is_resident(&self, coord: [i32; 2]) -> bool {
-        self.terrain.as_ref().is_some_and(|t| t.is_resident(coord))
+    pub fn terrain_is_resident(&self, coord: impl Into<TerrainSlotKey>) -> bool {
+        let k = coord.into();
+        self.terrain.as_ref().is_some_and(|t| t.is_resident(k))
     }
 
     /// Chunks to draw from the next frame on; returns how many are resident (others are skipped).
-    pub fn set_terrain_draw(&mut self, coords: &[[i32; 2]]) -> usize {
-        self.terrain.as_mut().map_or(0, |t| t.set_draw(coords))
+    pub fn set_terrain_draw<K: Into<TerrainSlotKey> + Copy>(&mut self, coords: &[K]) -> usize {
+        self.terrain.as_mut().map_or(0, |t| t.set_draw(coords.iter().map(|&c| c.into())))
+    }
+
+    /// Terrain residency config (slots, `verts_per_slot`, staging), if enabled.
+    pub fn terrain_config(&self) -> Option<TerrainGpuConfig> {
+        self.terrain.as_ref().map(|t| t.cfg)
+    }
+
+    /// Colouring of the surface pass (terrain slots + static meshes) from the next frame on.
+    pub fn set_surface_palette(&mut self, palette: SurfacePalette) {
+        self.surface_palette = palette;
+    }
+
+    pub fn surface_palette(&self) -> SurfacePalette {
+        self.surface_palette
     }
 
     pub fn terrain_stats(&self) -> Option<UploadStats> {
@@ -1109,7 +1129,7 @@ impl AshBackend {
             planes: frustum_planes(Mat4::from_cols_array_2d(&snap.view_proj)).map(|p| p.to_array()),
             instance_count: n as u32,
             mesh_count: self.meshes.len() as u32,
-            _pad: [0; 2],
+            surface_range: self.surface_palette.gpu_range(),
         };
         {
             let slot = &mut self.slots[si];
@@ -1221,7 +1241,7 @@ impl AshBackend {
             // timeline (`TerrainGpu::upload` only picks slots with last_used <= completed value),
             // and each staging range is tagged with this frame, so it is not reused before it retires.
             if let Some(t) = self.terrain.as_ref().filter(|t| !t.pending.is_empty()) {
-                let slot_bytes = t.cfg.verts_per_slot as u64 * SURFACE_VERTEX_BYTES as u64;
+                let slot_bytes = t.cfg.slot_bytes();
                 let regions: Vec<vk::BufferCopy> = t
                     .pending
                     .iter()

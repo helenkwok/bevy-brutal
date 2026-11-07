@@ -10,6 +10,7 @@ description = "Cube-sphere planet: per-face quadtree (2:1 restricted, stitched +
 [dependencies]
 glam.workspace = true
 coords.workspace = true
+terrain.workspace = true
 bytemuck.workspace = true
 rayon.workspace = true
 asset = { path = "../asset" }

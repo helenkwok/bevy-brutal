@@ -2,6 +2,8 @@
 //! and grid meshing into a per-frame arena. GPU upload lives in `render-ash` (stubbed).
 #![forbid(unsafe_code)]
 
+pub mod dem;
+
 use bytemuck::{Pod, Zeroable};
 use mem::FrameArena;
 use wide::{f32x8, i32x8};

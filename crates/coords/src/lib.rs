@@ -6,6 +6,7 @@
 //!   watertight across bricks/chunks is derived from lattice integers, never from accumulated floats.
 //! * **Brick**: `brick_size^3` voxels (16 / 32 / 64) of `voxel_m` metres, addressed by `BrickCoord`.
 //!   LOD `l` bricks use spacing `voxel_m * 2^l` and cover `2^l` times the extent.
+//! * **Geodetic**: WGS84 lat/lon/height, ECEF, and local East-North-Up tangent frames, see [`geodetic`].
 //! * **Render**: f32 metres relative to a camera/render origin (`to_render`), so precision does not
 //!   degrade far from the world origin.
 //!
@@ -13,7 +14,9 @@
 #![forbid(unsafe_code)]
 
 pub mod frames;
+pub mod geodetic;
 pub use frames::{FloatingOrigin, Frame, FrameError, FrameId, FrameLevel, FrameTree, WorldPos};
+pub use geodetic::{Enu, Geodetic};
 pub use glam::{DVec3, Vec3};
 
 /// Floor division (rounds toward -inf). `b > 0`.

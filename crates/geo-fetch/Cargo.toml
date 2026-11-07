@@ -1,0 +1,37 @@
+[package]
+name = "geo-fetch"
+description = "Fetch and cache OpenStreetMap (Geofabrik) extracts and AWS Terrain Tiles elevation, with attribution helpers"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[features]
+default = ["net", "cli", "pbf"]
+# Real HTTP client (ureq + rustls). Without it the library still builds and every fetch goes
+# through a caller-supplied `Fetch` implementation (tests use an in-memory one).
+net = ["dep:ureq"]
+# The `geo-fetch` command-line tool.
+cli = ["net", "pbf", "dep:clap"]
+# OSM .pbf decoding into derived layers (`osm_extract`, `geo-fetch osm-extract`).
+pbf = ["dep:osmpbf", "dep:rayon"]
+# Opt-in tests that touch the live servers (`cargo test -p geo-fetch --features live-tests`).
+live-tests = ["net"]
+
+[dependencies]
+serde_json = "1"
+md-5 = "0.11"
+thiserror = "2"
+coords.workspace = true
+png = "0.18"
+osmpbf = { version = "0.3", optional = true }
+rayon = { workspace = true, optional = true }
+ureq = { version = "3", optional = true }
+clap = { version = "4", features = ["derive"], optional = true }
+
+[[bin]]
+name = "geo-fetch"
+required-features = ["cli"]
+
+[lints]
+workspace = true

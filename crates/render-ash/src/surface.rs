@@ -1,7 +1,9 @@
 //! World-space surface meshes drawn after the instanced pass, with the `surface.slang` pipeline:
 //!
-//! * **Terrain residency** (Prompt C, single LOD): `slots` fixed-size regions in one device-local
-//!   vertex buffer, all sharing one grid index buffer. Chunks arrive through a fixed **staging ring**
+//! * **Terrain residency** (Prompt C; LOD'd DEM chunks since 3 Nov 2026): `slots` fixed-size
+//!   regions in one device-local vertex buffer, all sharing one index buffer, keyed by
+//!   [`TerrainSlotKey`] `(lod, x, y)` (noise chunks use `[i32; 2]` = LOD 0). `verts_per_slot` is
+//!   the chunk's fixed vertex count (`65²` noise, `terrain::dem::DEM_CHUNK_VERTS` with skirts). Chunks arrive through a fixed **staging ring**
 //!   (host-visible, default 32 MiB) and are copied into their slot at the start of the next frame's
 //!   command buffer. LRU eviction never hands out a slot whose last reader frame has not retired.
 //! * **Static meshes** (e.g. voxel output): uploaded once with `wait_idle`, drawn every frame.
@@ -21,11 +23,80 @@ use crate::context::{GpuBuffer, VkContext};
 /// pos: [f32; 3] + normal: [f32; 3] (== terrain::TerrainVertex == mesh::MeshVertex).
 pub const SURFACE_VERTEX_BYTES: usize = 24;
 
+/// Residency key of one terrain chunk: LOD level plus chunk coordinates at that level.
+///
+/// Noise chunks (`[i32; 2]`) convert to LOD 0; DEM chunks (`terrain::dem::DemChunkId`) map
+/// field-for-field (`y` counts northward there). Keys of different LODs never alias, so a parent
+/// and its children can be resident at once (needed while a quadtree refines or coarsens).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct TerrainSlotKey {
+    pub lod: u8,
+    pub x: i32,
+    pub y: i32,
+}
+
+impl TerrainSlotKey {
+    pub const fn new(lod: u8, x: i32, y: i32) -> Self {
+        Self { lod, x, y }
+    }
+}
+
+impl From<[i32; 2]> for TerrainSlotKey {
+    fn from(c: [i32; 2]) -> Self {
+        Self { lod: 0, x: c[0], y: c[1] }
+    }
+}
+
+/// A noise-chunk coordinate equals the LOD 0 key with the same `x, y`.
+impl PartialEq<[i32; 2]> for TerrainSlotKey {
+    fn eq(&self, c: &[i32; 2]) -> bool {
+        *self == Self::from(*c)
+    }
+}
+
+impl From<(u8, i32, i32)> for TerrainSlotKey {
+    fn from((lod, x, y): (u8, i32, i32)) -> Self {
+        Self { lod, x, y }
+    }
+}
+
+/// Surface-pass colouring of terrain/static surfaces (fragment palette in `surface.slang`).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub enum SurfacePalette {
+    /// Tuned for the ±40 m noise terrain: sand below 0 m, grass, snow from 18–28 m, rock on slopes.
+    #[default]
+    Noise,
+    /// Real-world heights in metres (DEM): water at/below `0 m` (sea level, orthometric heights),
+    /// then a hypsometric ramp normalised over `[lo_m, hi_m]` (coast → dry plains → pasture →
+    /// scrub/forest → bare high ground) with rock on steep slopes. No snow: absolute heights such
+    /// as Adelaide's −5…604 m stay green/brown instead of turning white above 28 m.
+    HeightRange { lo_m: f32, hi_m: f32 },
+}
+
+impl SurfacePalette {
+    /// `HeightRange` spanning a grid's height range (the low end clamped to sea level).
+    pub fn for_heights(min_m: f32, max_m: f32) -> Self {
+        let lo = min_m.max(0.0);
+        Self::HeightRange { lo_m: lo, hi_m: max_m.max(lo + 1.0) }
+    }
+
+    /// `(lo, hi)` as sent to the shader in `Frame`; `hi <= lo` selects the noise palette.
+    pub(crate) fn gpu_range(self) -> [f32; 2] {
+        match self {
+            Self::Noise => [0.0, 0.0],
+            Self::HeightRange { lo_m, hi_m } if hi_m > lo_m => [lo_m, hi_m],
+            // degenerate range: keep the DEM palette with a 1 m span instead of falling back to snow
+            Self::HeightRange { lo_m, .. } => [lo_m, lo_m + 1.0],
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct TerrainGpuConfig {
     /// Resident chunk slots.
     pub slots: u32,
-    /// Vertices per chunk (65 * 65 at LOD0).
+    /// Vertices per chunk: 65 * 65 for noise chunks, `terrain::dem::DEM_CHUNK_VERTS` (65² + 4·65
+    /// skirt vertices) for DEM chunks. Must match the shared index buffer.
     pub verts_per_slot: u32,
     /// Staging ring size in bytes (fixed; never grows).
     pub staging_bytes: u64,
@@ -34,6 +105,17 @@ pub struct TerrainGpuConfig {
 impl Default for TerrainGpuConfig {
     fn default() -> Self {
         Self { slots: 256, verts_per_slot: 65 * 65, staging_bytes: 32 << 20 }
+    }
+}
+
+impl TerrainGpuConfig {
+    /// Config for DEM chunks with `verts_per_slot` vertices each (pass `DEM_CHUNK_VERTS`).
+    pub fn dem(slots: u32, verts_per_slot: u32) -> Self {
+        Self { slots, verts_per_slot, ..Default::default() }
+    }
+
+    pub fn slot_bytes(&self) -> u64 {
+        self.verts_per_slot as u64 * SURFACE_VERTEX_BYTES as u64
     }
 }
 
@@ -51,7 +133,7 @@ pub struct UploadStats {
 #[derive(Debug, PartialEq, Eq)]
 pub enum UploadOutcome {
     AlreadyResident { slot: u32 },
-    Staged { slot: u32, evicted: Option<[i32; 2]> },
+    Staged { slot: u32, evicted: Option<TerrainSlotKey> },
 }
 
 /// Ring allocation bookkeeping (pure, unit-tested). Allocations are tagged with the frame whose
@@ -125,8 +207,8 @@ pub(crate) struct TerrainGpu {
     pub(crate) indices: GpuBuffer,
     pub(crate) index_count: u32,
     pub(crate) ring: StagingRing,
-    slot_of: HashMap<[i32; 2], u32>,
-    coord_of: Vec<Option<[i32; 2]>>,
+    slot_of: HashMap<TerrainSlotKey, u32>,
+    coord_of: Vec<Option<TerrainSlotKey>>,
     /// Last frame that read (drew) or wrote (copied into) the slot.
     last_used: Vec<u64>,
     free: Vec<u32>,
@@ -139,7 +221,18 @@ pub(crate) struct TerrainGpu {
 
 impl TerrainGpu {
     pub(crate) fn new(ctx: &mut VkContext, cfg: TerrainGpuConfig, grid_indices: &[u32]) -> Result<Self, BackendError> {
-        let vbytes = cfg.slots as u64 * cfg.verts_per_slot as u64 * SURFACE_VERTEX_BYTES as u64;
+        if cfg.verts_per_slot == 0 || cfg.slots == 0 {
+            return Err(BackendError::BadConfig("terrain slots and verts_per_slot must be > 0"));
+        }
+        if let Some(&max) = grid_indices.iter().max()
+            && max >= cfg.verts_per_slot
+        {
+            return Err(BackendError::BadConfig("terrain index buffer references vertices past verts_per_slot"));
+        }
+        if cfg.slot_bytes() > cfg.staging_bytes {
+            return Err(BackendError::BadConfig("terrain staging ring smaller than one chunk"));
+        }
+        let vbytes = cfg.slots as u64 * cfg.slot_bytes();
         let vertices = GpuBuffer::new(
             ctx,
             "terrain_vertices",
@@ -180,19 +273,19 @@ impl TerrainGpu {
         })
     }
 
-    pub(crate) fn is_resident(&self, coord: [i32; 2]) -> bool {
+    pub(crate) fn is_resident(&self, coord: TerrainSlotKey) -> bool {
         self.slot_of.contains_key(&coord)
     }
 
     /// Stage `bytes` (a whole chunk's vertices) for `coord`, to be copied by frame `next_frame`.
     pub(crate) fn upload(
         &mut self,
-        coord: [i32; 2],
+        coord: TerrainSlotKey,
         bytes: &[u8],
         next_frame: u64,
         completed: u64,
     ) -> Result<UploadOutcome, BackendError> {
-        let slot_bytes = self.cfg.verts_per_slot as u64 * SURFACE_VERTEX_BYTES as u64;
+        let slot_bytes = self.cfg.slot_bytes();
         if bytes.len() as u64 != slot_bytes {
             return Err(BackendError::BadConfig("terrain chunk vertex data must fill exactly one slot"));
         }
@@ -247,9 +340,9 @@ impl TerrainGpu {
     }
 
     /// Set the chunks drawn from the next frame on (non-resident coords are skipped).
-    pub(crate) fn set_draw(&mut self, coords: &[[i32; 2]]) -> usize {
+    pub(crate) fn set_draw(&mut self, coords: impl IntoIterator<Item = TerrainSlotKey>) -> usize {
         self.draw.clear();
-        self.draw.extend(coords.iter().filter_map(|c| self.slot_of.get(c).copied()));
+        self.draw.extend(coords.into_iter().filter_map(|c| self.slot_of.get(&c).copied()));
         self.draw.len()
     }
 
@@ -307,6 +400,28 @@ pub(crate) fn upload_static(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn slot_keys_keep_lods_apart() {
+        let a: TerrainSlotKey = [3, -2].into();
+        assert_eq!(a, TerrainSlotKey::new(0, 3, -2));
+        assert!(a == [3, -2] && TerrainSlotKey::new(1, 3, -2) != [3, -2]);
+        assert_ne!(TerrainSlotKey::new(1, 3, -2), a, "same x,y at another LOD is another chunk");
+        let mut m = HashMap::new();
+        for l in 0..4u8 {
+            m.insert(TerrainSlotKey::from((l, 0, 0)), l);
+        }
+        assert_eq!(m.len(), 4);
+    }
+
+    #[test]
+    fn palette_ranges() {
+        assert_eq!(SurfacePalette::Noise.gpu_range(), [0.0, 0.0]);
+        // Adelaide z12: -4.7..604 m -> sea-level clamped
+        assert_eq!(SurfacePalette::for_heights(-4.7, 604.0).gpu_range(), [0.0, 604.0]);
+        let flat = SurfacePalette::HeightRange { lo_m: 10.0, hi_m: 10.0 }.gpu_range();
+        assert!(flat[1] > flat[0], "degenerate range must not select the snow palette");
+    }
 
     #[test]
     fn ring_wraps_and_respects_unretired_frames() {

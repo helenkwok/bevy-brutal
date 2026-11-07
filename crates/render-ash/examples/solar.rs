@@ -1000,15 +1000,20 @@ fn render_view(cx: &mut Ctx, sys: &System, s: &Shot, w: u32, h: u32, ss: u32) ->
             }
             let a = std::f64::consts::PI * rr * rr;
             let m = acc.map(|v| v / a / s.exposure);
+            // disc-mean radiance factor pi L / E (E = the solar irradiance at the Earth's distance):
+            // the scattering function P(phase), = the geometric albedo at zero phase (see
+            // tools/earth_reflectance.py for the per-class disc-centre probe)
+            let e_sun = (AU_M / sys.get(BodyId::Earth).2.length()).powi(2);
             eprintln!(
-                "EARTH_DISC {} r {:.2} w {:.3} mean/exposure [{:.5},{:.5},{:.5}] lum {:.5}",
+                "EARTH_DISC {} r {:.2} w {:.3} mean/exposure [{:.5},{:.5},{:.5}] lum {:.5} piL/E {:.4}",
                 s.name,
                 earth_r,
                 earth_w,
                 m[0],
                 m[1],
                 m[2],
-                lum(m)
+                lum(m),
+                std::f64::consts::PI * lum(m) / e_sun
             );
         }
     }

@@ -35,8 +35,7 @@ public struct Frame {           // == render_ash FrameGpu (176 bytes)
     public float4 planes[6];    // normalized, inside when dot(n, p) + d >= 0
     public uint instance_count;
     public uint mesh_count;
-    public uint _pad0;
-    public uint _pad1;
+    public float2 surface_range; // surface palette height range in m; y <= x: noise palette
 }
 
 public struct Push {            // == render_ash PushGpu (9 x u64 = 72 bytes); all per frame slot

@@ -29,6 +29,8 @@ png = "0.18.1"
 terrain.workspace = true
 mem.workspace = true
 coords.workspace = true
+# dem_terrain example: read `geo-fetch terrain-grid` output (no network features needed).
+geo-fetch = { workspace = true, default-features = false }
 
 [[example]]
 name = "instanced_stress"
@@ -47,6 +49,12 @@ name = "solar"
 
 [[example]]
 name = "descent"
+
+[[example]]
+name = "dem_terrain"
+
+[[example]]
+name = "drape_lod"
 
 [lints]
 workspace = true

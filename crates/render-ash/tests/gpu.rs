@@ -471,6 +471,80 @@ fn terrain_eviction_waits_for_retired_frames() {
     assert_no_validation_errors();
 }
 
+/// DEM chunks through the terrain slots: `(lod, x, y)` keys keep a parent and its children
+/// resident side by side, `verts_per_slot = DEM_CHUNK_VERTS` (skirts included), wrong-sized chunks
+/// are rejected, and the height-range palette keeps a 0..600 m surface off the noise palette's
+/// snow (which turns everything above 28 m white). Validation clean.
+#[test]
+fn dem_chunks_use_lod_keys_and_height_palette() {
+    use render_ash::{SurfacePalette, TerrainGpuConfig, TerrainSlotKey};
+    use terrain::dem::{DEM_CHUNK_VERTS, DemChunkId, DemGrid, DemTerrain, dem_chunk_indices};
+    let _g = GPU.lock().unwrap_or_else(|e| e.into_inner());
+    let Some(mut b) = backend(160, 120, 16) else { return };
+    // 200x200 samples @ 30 m: a ridge rising from 0 m (west) to 600 m (east). Root LOD 2.
+    let n = 200;
+    let heights: Vec<f32> = (0..n * n)
+        .map(|k| {
+            let (c, r) = ((k % n) as f32, (k / n) as f32);
+            (c / (n - 1) as f32 * 600.0 + 20.0 * (r * 0.15).sin()).max(0.0)
+        })
+        .collect();
+    let t = DemTerrain::new(DemGrid::new(n, n, 30.0, -3000.0, -3000.0, heights).unwrap());
+    assert_eq!(t.root_lod(), 2);
+    let cfg = TerrainGpuConfig::dem(8, DEM_CHUNK_VERTS as u32);
+    assert!(
+        b.enable_terrain(TerrainGpuConfig::default(), &dem_chunk_indices()).is_err(),
+        "skirt indices past 65*65 must be rejected"
+    );
+    b.enable_terrain(cfg, &dem_chunk_indices()).unwrap();
+    assert_eq!(b.terrain_config().unwrap().verts_per_slot as usize, DEM_CHUNK_VERTS);
+    let key = |id: DemChunkId| TerrainSlotKey::new(id.lod, id.x as i32, id.y as i32);
+    let parent = DemChunkId { lod: 1, x: 0, y: 0 };
+    let kids = parent.children();
+    for id in std::iter::once(parent).chain(kids) {
+        b.upload_terrain_chunk(key(id), &t.mesh_chunk(id)).unwrap();
+    }
+    assert!(b.upload_terrain_chunk(key(DemChunkId { lod: 1, x: 1, y: 0 }), &t.mesh_chunk(kids[0])[..65 * 65]).is_err());
+    assert!(b.terrain_is_resident(key(parent)) && kids.iter().all(|&k| b.terrain_is_resident(key(k))));
+    assert!(b.terrain_is_resident([0, 0]), "[i32; 2] keys are LOD 0: chunk (0, 0, 0) is a child");
+    assert!(!b.terrain_is_resident((2, 0, 0)), "the LOD 2 root was never uploaded");
+    assert_eq!(b.set_terrain_draw(&kids.map(key)), 4);
+
+    // Above the south-west quarter (LOD0 kids cover 0..1920 m east/north of -3000), looking down.
+    let vp = (render_ash::cull::vk_perspective(1.0, 160.0 / 120.0, 5.0, 20_000.0)
+        * render_ash::cull::look_at(
+            glam::Vec3::new(-2000.0, 2500.0, 3000.0),
+            glam::Vec3::new(-2000.0, 200.0, 2000.0),
+            glam::Vec3::Y,
+        ))
+    .to_cols_array_2d();
+    let shot = |b: &mut AshBackend, palette: SurfacePalette, base: u64| {
+        b.set_surface_palette(palette);
+        for i in 0..3 {
+            b.render(&FrameSnapshot { view_proj: vp, instances: &[], frame_index: base + i }).unwrap();
+        }
+        let (_, _, px) = b.read_color_rgba().unwrap();
+        let clear = [13u8, 15, 23];
+        let (mut lit, mut white) = (0, 0);
+        for q in px.as_chunks::<4>().0 {
+            if q[..3].iter().zip(clear).any(|(x, y)| x.abs_diff(y) > 3) {
+                lit += 1;
+                white += usize::from(q[..3].iter().all(|&v| v > 170));
+            }
+        }
+        (lit, white)
+    };
+    let (lit_n, white_n) = shot(&mut b, SurfacePalette::Noise, 0);
+    let (lit_d, white_d) = shot(&mut b, SurfacePalette::for_heights(0.0, 600.0), 3);
+    eprintln!("dem: lit {lit_d} (noise palette {lit_n}); white px dem {white_d}, noise {white_n}");
+    assert!(lit_d > 160 * 120 / 4, "DEM chunks not visible ({lit_d} lit)");
+    assert_eq!(lit_d, lit_n, "the palette must not change coverage");
+    assert!(white_n > lit_n / 2, "noise palette should be mostly snow here ({white_n}/{lit_n})");
+    assert!(white_d * 100 < lit_d, "height palette still snow-white ({white_d}/{lit_d})");
+    drop(b);
+    assert_no_validation_errors();
+}
+
 /// Prompt C2: the Slang Transvoxel mesher reproduces the CPU integer mesher exactly (positions
 /// bit-identical, same triangle order; normals within 1e-4) on uniform, slab, camera-centred
 /// shell and adversarial-fuzz layouts, and its output is watertight on its own.

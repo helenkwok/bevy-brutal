@@ -21,6 +21,18 @@
 //! baked albedo / normal / shadow / AO maps from the file), the real Earth beyond; strength 0..1
 //! by the descent's height. `GRAFT_ALB` / `GRAFT_AO` tune the albedo gain / AO strength.
 //!
+//! DEM patch (`planet::dem`): `DEM=<geo-fetch terrain-grid dir>[,strength]` places a real DEM
+//! (e.g. `/workspace/data/geo/terrain/grids/adelaide_z12`) on the planet: patch heights inside its
+//! disc are the DEM's, shading (normals, cast shadows, coastline) goes through the graft bindings,
+//! baked per shot for its sun. `DEM_R=r_full_km,r_out_km`, `DEM_TEX=<size>`, `DEM_TINT`, `DEM_ALB`.
+//! `OSM=<geo-fetch osm-extract dir>[,cell_m]` (with DEM) drapes OSM roads / buildings / water /
+//! landuse colour over the DEM palette (`planet::drape`, 4 m cells by default).
+//! `DEM_CLOSE_KM=<half>` streams a third concentric graft tile (default 3 km with OSM, 0 = off)
+//! so Fragments-style building objects LOD (`BuildingLod`, ≤ 6.8 m texels) can show; the shader
+//! reads it as array layer 2 via `meso2.y`. Shots `DEM_adelaide_*` (use `HOLE=-34.9,138.6,1.5`
+//! for a clear sky over the patch); `DEM_adelaide_objects` is a low nadir over Norwood that
+//! fills the close tile with individual roofs (Toorak Gardens / Rose Park).
+//!
 //! Solar system round 1: `STARS=0` (no star splat) and `HDR_OUT=1` (`<name>.hdr.bin`, the exposed
 //! linear HDR at the render size) for the `solar` example's Earth handoff; unset = unchanged.
 //!
@@ -198,6 +210,82 @@ fn shots() -> Vec<Shot> {
             night_gain: 1.5e-6,
             gmst: 0.0,
         },
+        // DEM patch on the planet (`planet::dem`, DEM=<geo-fetch grid dir>): Adelaide, early
+        // November, 15:30 local solar time (sun 39 deg up in the north-west, lighting the Mount
+        // Lofty scarp). Run with HOLE=-34.9,138.6,1.5 to clear the dated cloud map over the patch.
+        Shot {
+            name: "DEM_adelaide_60km",
+            lat: -35.30,
+            lon: 138.42,
+            alt_km: 60.0,
+            heading: 25.0,
+            pitch: -48.0,
+            fov_y: 40.0,
+            sun_lat: -15.0,
+            sun_lon: 86.0,
+            exposure: 2.6,
+            night_gain: 1.5e-6,
+            gmst: 0.0,
+        },
+        Shot {
+            name: "DEM_adelaide_nadir",
+            lat: -34.9,
+            lon: 138.6,
+            alt_km: 30.0,
+            heading: 0.0,
+            pitch: -90.0,
+            fov_y: 40.0,
+            sun_lat: -15.0,
+            sun_lon: 86.0,
+            exposure: 2.6,
+            night_gain: 1.5e-6,
+            gmst: 0.0,
+        },
+        Shot {
+            name: "DEM_adelaide_6km",
+            lat: -34.93,
+            lon: 138.40,
+            alt_km: 6.0,
+            heading: 85.0,
+            pitch: -16.0,
+            fov_y: 50.0,
+            sun_lat: -15.0,
+            sun_lon: 86.0,
+            exposure: 2.6,
+            night_gain: 1.5e-6,
+            gmst: 0.0,
+        },
+        Shot {
+            name: "DEM_adelaide_1500m",
+            lat: -34.955,
+            lon: 138.545,
+            alt_km: 1.5,
+            heading: 70.0,
+            pitch: -7.0,
+            fov_y: 55.0,
+            sun_lat: -15.0,
+            sun_lon: 86.0,
+            exposure: 2.6,
+            night_gain: 1.5e-6,
+            gmst: 0.0,
+        },
+        // Close graft tile proof: nadir over Toorak Gardens / Rose Park (inside the DEM-centred
+        // DEM_CLOSE_KM≈2..3 km tile) so ≤ 2 m texels fill the frame → BuildingLod objects
+        // (per-roof variants + outlines). Norwood (138.63) sits ~3.5 km off-centre and misses a 2 km half.
+        Shot {
+            name: "DEM_adelaide_objects",
+            lat: -34.905,
+            lon: 138.605,
+            alt_km: 1.8,
+            heading: 0.0,
+            pitch: -90.0,
+            fov_y: 40.0,
+            sun_lat: -15.0,
+            sun_lon: 86.0,
+            exposure: 2.6,
+            night_gain: 1.5e-6,
+            gmst: 0.0,
+        },
     ]
 }
 
@@ -229,6 +317,68 @@ fn camera(s: &Shot) -> Cam {
     let right = fwd.cross(ref_up).normalize();
     let up = right.cross(fwd);
     Cam { pos, fwd, right, up }
+}
+
+/// Bake + upload the DEM patch's graft textures for sun direction `sun` (planet frame) and return
+/// the five graft parameter vectors (`graft`, `graft_e`, `graft_n`, `graft_l`, `graft_t`).
+/// Albedo gain 1 and a full-disc tint (real albedo at LOD 0 over the bake's ~2.4 km low-pass):
+/// the palette only adds the DEM's sub-texel variation to the Blue Marble colour.
+/// Bake + upload DEM graft levels. Returns `(graft param vectors, close_half_km)` where
+/// `close_half_km` is 0 when the close streamed tile is off (shader skips layer 2).
+fn dem_graft(
+    be: &mut AshBackend,
+    tex: &mut render_ash::planet::PlanetTextures,
+    pl: &planet::dem::DemPlacement,
+    k: f64,
+    sun: DVec3,
+    planet_height: &(dyn Fn(DVec3) -> f64 + Sync),
+) -> ([[f32; 4]; 5], f32) {
+    let env = |k: &str| std::env::var(k).ok().and_then(|v| v.parse::<f64>().ok());
+    let size = env("DEM_TEX").unwrap_or(1024.0) as u32;
+    // DEM_CLOSE_KM: half extent of the streamed close tile. Default 2 km when an OSM drape is
+    // present (objects LOD needs ≤ 6.8 m texels → 2 km @ 2048 = 1.95 m); 0 disables.
+    let close_m = match env("DEM_CLOSE_KM") {
+        Some(v) if v <= 0.0 => None,
+        Some(v) => Some(v * 1000.0),
+        None if pl.drape().is_some() => Some(3000.0),
+        None => None,
+    };
+    let t = Instant::now();
+    let g = pl.bake_graft_close(sun, size, planet_height, close_m);
+    let bake_ms = t.elapsed().as_secs_f64() * 1e3;
+    let alb: Vec<Vec<Vec<u8>>> =
+        g.levels.iter().map(|l| render_ash::planet::rgba8_mips(l.size, &l.albedo, true)).collect();
+    let aux: Vec<Vec<Vec<u8>>> =
+        g.levels.iter().map(|l| render_ash::planet::rgba8_mips(l.size, &l.aux, false)).collect();
+    be.planet_set_graft(tex, size, &alb, &aux).expect("upload DEM graft");
+    let close_km = g.levels.get(2).map(|l| (l.half_m / 1000.0) as f32).unwrap_or(0.0);
+    let steps: String =
+        g.levels.iter().map(|l| format!("{:.2}m", 2.0 * l.half_m / l.size as f64)).collect::<Vec<_>>().join(", ");
+    eprintln!(
+        "dem graft: {} x {size}^2 (texels {steps}) baked in {bake_ms:.0} ms, {:.1} MB{}",
+        g.levels.len(),
+        tex.graft_bytes as f64 / 1048576.0,
+        if close_km > 0.0 { format!(", close {close_km:.2} km") } else { String::new() }
+    );
+    let m = pl.graft_map();
+    let (c, e, n) = (m.centre * k, m.east, m.north);
+    let r = planet::EARTH_RADIUS_M;
+    (
+        [
+            [c.x as f32, c.y as f32, c.z as f32, (pl.r_full_m / r) as f32],
+            [e.x as f32, e.y as f32, e.z as f32, (pl.r_out_m / r) as f32],
+            [n.x as f32, n.y as f32, n.z as f32, (g.levels[0].half_m / 1000.0) as f32],
+            [(g.levels[1].half_m / 1000.0) as f32, env("DEM_ALB").unwrap_or(1.0) as f32, 0.0, size as f32],
+            [
+                env("DEM_TINT").unwrap_or(1.0) as f32,
+                // inner radius -1 rad: the tint is ~1 over the whole disc
+                -1.0,
+                0.0,
+                (2400.0 * size as f64 / (2.0 * g.levels[0].half_m)).log2() as f32,
+            ],
+        ],
+        close_km,
+    )
 }
 
 fn planes(c: &Cam, fov_y: f64, aspect: f64) -> [DVec4; 6] {
@@ -420,10 +570,58 @@ fn main() {
         ),
         _ => voxel::fields::Alpine::new(7),
     };
+    // DEM patch (`planet::dem`): DEM=<geo-fetch terrain-grid dir>[,strength] puts a real DEM on
+    // the planet (patch heights inside its disc, shading through the graft bindings);
+    // DEM_R=r_full_km,r_out_km overrides the blend disc, DEM_TEX the graft texture size (1024)
+    let dem = std::env::var("DEM").ok().filter(|v| v != "off").map(|v| {
+        let (dir, k) = match v.rsplit_once(',') {
+            Some((d, k)) if k.parse::<f64>().is_ok() => (d.to_string(), k.parse::<f64>().unwrap()),
+            _ => (v.clone(), 1.0),
+        };
+        let hg = geo_fetch::grid::read_grid(Path::new(&dir)).unwrap_or_else(|e| panic!("DEM {dir}: {e}"));
+        let enu = hg.enu();
+        let grid = terrain::dem::DemGrid::new(
+            hg.width,
+            hg.height,
+            hg.spacing_m as f32,
+            hg.x0 as f32,
+            hg.y0 as f32,
+            hg.heights,
+        )
+        .expect("DEM grid shape");
+        let mut pl = planet::dem::DemPlacement::new(enu, grid);
+        if let Some(r) = list3("DEM_R") {
+            pl = pl.with_blend(r[0] * 1000.0, r[1] * 1000.0);
+        }
+        // OSM=<geo-fetch osm-extract dir>[,cell_m]: drape roads / buildings / water / landuse
+        // (planet::drape) over the DEM palette in the graft bake
+        if let Some(v) = std::env::var("OSM").ok().filter(|v| v != "off") {
+            let (odir, cell) = match v.rsplit_once(',') {
+                Some((d, c)) if c.parse::<f64>().is_ok() => (d.to_string(), c.parse::<f64>().unwrap()),
+                _ => (v.clone(), 4.0),
+            };
+            let d = std::sync::Arc::new(osm_drape(&pl, Path::new(&odir), cell));
+            pl = pl.with_drape(d);
+        }
+        eprintln!(
+            "dem: {dir} {}x{} @ {} m, disc {:.2}..{:.2} km, strength {k}",
+            pl.grid().width,
+            pl.grid().height,
+            pl.grid().spacing_m,
+            pl.r_full_m / 1000.0,
+            pl.r_out_m / 1000.0
+        );
+        (pl, k.clamp(0.0, 1.0))
+    });
+    assert!(!(dem.is_some() && graft_env.is_some()), "DEM and GRAFT share the graft bindings: set one");
     let height_lvl = |d: DVec3, level: u8| -> f64 {
         let h = height_at(d);
-        match graft_ctx {
+        let h = match graft_ctx {
             Some((map, r0, r1, k)) => graft::graft_height(&field, &map, (r0, r1, k), d, h, graft::level_spacing(level)),
+            None => h,
+        };
+        match &dem {
+            Some((pl, k)) => pl.blend_height(d, h, graft::level_spacing(level), *k),
             None => h,
         }
     };
@@ -525,6 +723,15 @@ fn main() {
         let proj = render_ash::quality::reverse_z_infinite(fov as f32, aspect as f32, near);
         let vp = proj * view_m;
         let sun = latlon_dir(s.sun_lat, s.sun_lon);
+        // DEM: the graft textures are baked per shot (the cast shadows follow its sun);
+        // close_km > 0 streams BuildingLod objects via graft array layer 2 (meso2.y).
+        let (graft_params, close_km) = match &dem {
+            Some((pl, k)) if *k > 0.0 => {
+                let (g, c) = dem_graft(&mut be, &mut tex, pl, *k, sun, &height_at);
+                (Some(g), c)
+            }
+            _ => (graft_params, 0.0),
+        };
         let alt_km = (c.pos.length() / 1000.0) - R_KM;
         let ty = (fov / 2.0).tan();
         let p = PlanetParamsGpu {
@@ -582,7 +789,7 @@ fn main() {
             ],
             // round 4 (EPIC cloud fraction): far coverage gamma; MESO_GAMMA=0 MESO_FINE=0
             // MESO_BIAS=-0.7 = round 3
-            meso2: [env("MESO_GAMMA").unwrap_or(0.9) as f32, 0.0, 0.0, 0.0],
+            meso2: [env("MESO_GAMMA").unwrap_or(0.9) as f32, close_km, 0.0, 0.0],
             thaw: flatten
                 .map_or([0.0; 4], |(c, _, a1, _, k)| [(c.x * k) as f32, (c.y * k) as f32, (c.z * k) as f32, a1 as f32]),
             graft: graft_params.map_or([0.0; 4], |g| g[0]),
@@ -784,6 +991,88 @@ fn main() {
         std::fs::write(out.join(format!("{}.json", s.name)), &json).unwrap();
     }
     be.planet_free(tex);
+}
+
+/// Load a `geo-fetch osm-extract` directory and rasterise it in `pl`'s plane (`cell_m` metres a
+/// cell) over the DEM grid's rectangle. Tunnels are skipped. ODbL: © OpenStreetMap contributors.
+fn osm_drape(pl: &planet::dem::DemPlacement, dir: &Path, cell_m: f64) -> planet::drape::Drape {
+    use geo_fetch::derived::{DerivedGeom, read_layer};
+    use planet::drape::{Drape, DrapeClass, DrapeFeature, DrapeShape};
+    let t = Instant::now();
+    let proj = |r: &[[f64; 2]]| -> Vec<[f64; 2]> {
+        r.iter()
+            .map(|p| {
+                let (e, n) = pl.latlon_to_plane(p[1], p[0]);
+                [e, n]
+            })
+            .collect()
+    };
+    let mut feats = Vec::new();
+    // painter's order is per class (DrapeClass::ALL), so layer order here does not matter
+    for layer in ["landuse", "water", "buildings", "roads"] {
+        let fs = read_layer(dir, layer).unwrap_or_else(|e| panic!("OSM {}: {e}", dir.display()));
+        for f in fs {
+            let Some(class) = DrapeClass::from_osm(&f.key, &f.kind) else { continue };
+            if f.tunnel {
+                continue;
+            }
+            match &f.geom {
+                DerivedGeom::Line(l) => feats.push(DrapeFeature {
+                    class,
+                    shape: DrapeShape::Line {
+                        pts: proj(l),
+                        width_m: f.width_m.unwrap_or_else(|| class.default_width_m(&f.kind)),
+                    },
+                }),
+                DerivedGeom::Polygon(p) => feats.push(DrapeFeature {
+                    class,
+                    shape: DrapeShape::Area { rings: p.iter().map(|r| proj(r)).collect() },
+                }),
+                DerivedGeom::MultiPolygon(m) => feats.extend(m.iter().map(|p| DrapeFeature {
+                    class,
+                    shape: DrapeShape::Area { rings: p.iter().map(|r| proj(r)).collect() },
+                })),
+            }
+        }
+    }
+    let n = feats.len();
+    // raster over the extract's manifest bbox (projected) clipped to the graft square, faded over
+    // OSM_FADE km (default 3) inside its edges; without a bbox, the DEM rectangle + its own fade
+    let half = 1.1 * pl.r_out_m;
+    let (c0, c1) = pl.centre_plane();
+    let fade_m = std::env::var("OSM_FADE").ok().and_then(|v| v.parse::<f64>().ok()).unwrap_or(3.0) * 1000.0;
+    let (rect, fade) = match geo_fetch::derived::read_bbox(dir) {
+        Some([w, s, e, n]) => {
+            let cs = [(s, w), (s, e), (n, w), (n, e)].map(|(la, lo)| pl.latlon_to_plane(la, lo));
+            let x0 = cs.iter().map(|c| c.0).fold(f64::MAX, f64::min).max(c0 - half);
+            let x1 = cs.iter().map(|c| c.0).fold(f64::MIN, f64::max).min(c0 + half);
+            let y0 = cs.iter().map(|c| c.1).fold(f64::MAX, f64::min).max(c1 - half);
+            let y1 = cs.iter().map(|c| c.1).fold(f64::MIN, f64::max).min(c1 + half);
+            ((x0, y0, x1, y1), fade_m)
+        }
+        None => (pl.grid_rect(), 0.0),
+    };
+    let d = Drape::build(&feats, rect, cell_m).with_edge_fade(fade);
+    let g = pl.grid_rect();
+    eprintln!(
+        "osm drape rect: {:.1}..{:.1} x {:.1}..{:.1} km (DEM {:.1}..{:.1} x {:.1}..{:.1} km), fade {:.1} km",
+        rect.0 / 1e3,
+        rect.2 / 1e3,
+        rect.1 / 1e3,
+        rect.3 / 1e3,
+        g.0 / 1e3,
+        g.2 / 1e3,
+        g.1 / 1e3,
+        g.3 / 1e3,
+        fade / 1e3
+    );
+    let (w, h) = d.size();
+    eprintln!(
+        "osm drape: {} -> {n} features, {w}x{h} @ {cell_m} m in {:.1} s (© OpenStreetMap contributors)",
+        dir.display(),
+        t.elapsed().as_secs_f64()
+    );
+    d
 }
 
 fn json_array(items: impl Iterator<Item = String>) -> String {

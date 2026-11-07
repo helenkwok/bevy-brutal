@@ -32,6 +32,7 @@ render-ash   = { path = "crates/render-ash" }
 ffi          = { path = "crates/ffi" }
 bridge       = { path = "crates/bridge" }
 planet       = { path = "crates/planet" }
+geo-fetch    = { path = "crates/geo-fetch" }
 
 [workspace.lints.clippy]
 undocumented_unsafe_blocks = "deny"
