@@ -73,3 +73,57 @@ Photometric display uses an explicitly modelled achromatic Gaia G-band proxy;
 it is not calibrated bolometric luminosity or observed RGB. Static ICRS epoch
 J2016.0 positions are not propagated to the current date. Ancillary resolved
 system/cluster tables are not yet ingested. No extra Sun is inserted in GCNS.
+
+## CNS5 independent positional diagnostic (external snapshot, unmerged)
+
+Golovin, Reffert, Just, Jordan, Vani & Jahreiß (2023), “The Fifth Catalogue of
+Nearby Stars (CNS5)”, A&A 670 A19, https://www.aanda.org/articles/aa/full_html/2023/02/aa44250-22/aa44250-22.html .
+GAVO https://dc.g-vo.org/CNS5 explicitly labels the compilation **CC BY 4.0**.
+This does not independently clear upstream Gaia/Hipparcos/infrared product rights.
+No commercial redistribution clearance is asserted. Retained current mirror has
+5,909 rows, not verified as all 5,931 published objects. Raw field bibcodes and
+native epochs are preserved. Existing Gaia/DPAC acknowledgment above also applies.
+No CNS5 data, samples or imagery are bundled; no automatic GCNS supplement occurs.
+
+## DESI DR1 selected observed galaxies (external data, positional markers)
+
+DESI Collaboration et al. (2026), “Data Release 1 of the Dark Energy Spectroscopic
+Instrument”; release and paper links: https://data.desi.lbl.gov/doc/releases/dr1/ .
+Data licence/required attribution: https://data.desi.lbl.gov/doc/acknowledgments/ .
+DESI declares **CC BY 4.0**, including commercial reuse with its stated citation,
+acknowledgment and change-notice conditions. This is distinct from the code licence.
+Changes: selected RA/Dec/redshift field, quality-primary filtering, assumed FLRW
+comoving coordinate conversion, equal-weight diagnostic rasterization. No physical
+photometry/galaxy shapes or survey completeness is claimed. Inputs include target
+coordinates from Legacy Surveys DR9 as documented by DESI; no Gaia stellar VAC is
+used by this galaxy path. The original raw subset and attribution snapshots stay
+external, not redistributed by the repository.
+
+Required DESI acknowledgment (retained policy text):
+
+> This research used data obtained with the Dark Energy Spectroscopic Instrument
+> (DESI). DESI construction and operations is managed by the Lawrence Berkeley
+> National Laboratory. This material is based upon work supported by the U.S.
+> Department of Energy, Office of Science, Office of High-Energy Physics, under
+> Contract No. DE–AC02–05CH11231, and by the National Energy Research Scientific
+> Computing Center, a DOE Office of Science User Facility under the same contract.
+> Additional support for DESI was provided by the U.S. National Science Foundation
+> (NSF), Division of Astronomical Sciences under Contract No. AST-0950945 to the
+> NSF’s National Optical-Infrared Astronomy Research Laboratory; the Science and
+> Technology Facilities Council of the United Kingdom; the Gordon and Betty Moore
+> Foundation; the Heising-Simons Foundation; the French Alternative Energies and
+> Atomic Energy Commission (CEA); the National Council of Humanities, Science and
+> Technology of Mexico (CONAHCYT); the Ministry of Science and Innovation of Spain
+> (MICINN), and by the DESI Member Institutions:
+> www.desi.lbl.gov/collaborating-institutions.
+>
+> The DESI collaboration is honored to be permitted to conduct scientific research
+> on I’oligam Du’ag (Kitt Peak), a mountain with particular significance to the
+> Tohono O’odham Nation. Any opinions, findings, and conclusions or recommendations
+> expressed in this material are those of the author(s) and do not necessarily
+> reflect the views of the U.S. National Science Foundation, the U.S. Department of
+> Energy, or any of the listed funding agencies.
+
+The subset was obtained through the Astro Data Lab, part of the Community Science
+and Data Center (CSDC) at NSF NOIRLab, operated by AURA under a cooperative agreement
+with NSF: https://datalab.noirlab.edu/data/desi . SPARCL was not used.

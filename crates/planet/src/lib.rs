@@ -38,3 +38,6 @@ pub mod universe;
 
 /// External observed GCNS records (no bundled data).
 pub mod gcns;
+
+/// Independent CNS5 / DESI positional diagnostics (not merged or photometric stars).
+pub mod observed;
