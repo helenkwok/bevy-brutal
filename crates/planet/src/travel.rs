@@ -389,3 +389,75 @@ fn wrap_angle(a: f64) -> f64 {
     }
     x
 }
+
+/// Interactive key latch. Cleared on focus loss so movement cannot stick after alt-tab.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct FlightKeys {
+    pub w: bool,
+    pub s: bool,
+    pub a: bool,
+    pub d: bool,
+    pub r: bool,
+    pub f: bool,
+    pub shift: bool,
+    pub ctrl: bool,
+}
+
+impl FlightKeys {
+    pub fn clear(&mut self) {
+        *self = Self::default();
+    }
+
+    pub fn on_focus(&mut self, focused: bool) {
+        if !focused {
+            self.clear();
+        }
+    }
+
+    pub fn speed_gear(&self) -> i8 {
+        if self.shift {
+            1
+        } else if self.ctrl {
+            -1
+        } else {
+            0
+        }
+    }
+
+    pub fn to_axes(&self) -> (f32, f32, f32) {
+        (
+            (self.w as i8 - self.s as i8) as f32,
+            (self.d as i8 - self.a as i8) as f32,
+            (self.r as i8 - self.f as i8) as f32,
+        )
+    }
+}
+
+/// One-line status for window title (not an in-frame HUD).
+pub fn status_title(
+    pos_sol_local_m: glam::DVec3,
+    yaw: f64,
+    pitch: f64,
+    speed_pc_s: f64,
+    selected: usize,
+    grabbed: bool,
+    focused: bool,
+) -> String {
+    let cov = Coverage::at(pos_sol_local_m);
+    let grab = if grabbed { "grab" } else { "free" };
+    let focus = if focused { "focus" } else { "unfocus" };
+    let warn = if cov.outside_nominal { " | OUTSIDE nominal 100pc survey" } else { "" };
+    format!(
+        "GT1 GCNS | xyz_pc=({:.3},{:.3},{:.3}) | yaw={:.2} pitch={:.2} | {:.4} pc/s | sel={} | {}/{}{}",
+        pos_sol_local_m.x / PARSEC_M,
+        pos_sol_local_m.y / PARSEC_M,
+        pos_sol_local_m.z / PARSEC_M,
+        yaw,
+        pitch,
+        speed_pc_s,
+        selected,
+        grab,
+        focus,
+        warn
+    )
+}

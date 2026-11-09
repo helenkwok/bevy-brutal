@@ -369,6 +369,10 @@ pub struct AshBackend {
     swapchain: Option<crate::swapchain::Swapchain>,
     #[cfg(feature = "windowed")]
     needs_recreate: bool,
+    /// Timeline value that must complete before rewriting an external TRANSFER_SRC image last consumed by blit/copy.
+    transfer_src_read_until: u64,
+    /// Offscreen R8G8B8A8 target used by `submit_transfer_src_read` (blit dst).
+    transfer_probe: Option<GpuImage>,
     /// Declared last: dropped after everything above has been destroyed in `Drop`.
     pub ctx: VkContext,
 }
@@ -712,6 +716,8 @@ impl AshBackend {
             swapchain: None,
             #[cfg(feature = "windowed")]
             needs_recreate: false,
+            transfer_src_read_until: 0,
+            transfer_probe: None,
             ctx,
         };
         b.set_meshes(&builtin_meshes())?;
@@ -1473,6 +1479,18 @@ impl AshBackend {
         dst: vk::Image,
         dst_extent: vk::Extent2D,
     ) {
+        self.record_blit_internal(cmd, src, src_extent, dst, dst_extent, false);
+    }
+
+    fn record_blit_internal(
+        &self,
+        cmd: vk::CommandBuffer,
+        src: vk::Image,
+        src_extent: vk::Extent2D,
+        dst: vk::Image,
+        dst_extent: vk::Extent2D,
+        probe_dst: bool,
+    ) {
         use vk::AccessFlags2 as A;
         use vk::PipelineStageFlags2 as S;
         let d = &self.ctx.device;
@@ -1514,15 +1532,27 @@ impl AshBackend {
                 vk::Filter::LINEAR,
             )
         };
-        image_barrier(
-            d,
-            cmd,
-            dst,
-            vk::ImageAspectFlags::COLOR,
-            (vk::ImageLayout::TRANSFER_DST_OPTIMAL, vk::ImageLayout::PRESENT_SRC_KHR),
-            (S::ALL_TRANSFER, A::TRANSFER_WRITE),
-            (S::NONE, A::NONE),
-        );
+        if probe_dst {
+            image_barrier(
+                d,
+                cmd,
+                dst,
+                vk::ImageAspectFlags::COLOR,
+                (vk::ImageLayout::TRANSFER_DST_OPTIMAL, vk::ImageLayout::TRANSFER_SRC_OPTIMAL),
+                (S::ALL_TRANSFER, A::TRANSFER_WRITE),
+                (S::NONE, A::NONE),
+            );
+        } else {
+            image_barrier(
+                d,
+                cmd,
+                dst,
+                vk::ImageAspectFlags::COLOR,
+                (vk::ImageLayout::TRANSFER_DST_OPTIMAL, vk::ImageLayout::PRESENT_SRC_KHR),
+                (S::ALL_TRANSFER, A::TRANSFER_WRITE),
+                (S::NONE, A::NONE),
+            );
+        }
     }
 
     #[cfg(feature = "windowed")]
@@ -1630,9 +1660,79 @@ impl AshBackend {
         unsafe { d.queue_submit2(self.ctx.queue, &[submit], vk::Fence::null())? };
         self.slots[si].submitted = fnum;
         self.frame_number = fnum;
+        self.transfer_src_read_until = fnum;
         if !self.swapchain.as_ref().unwrap().present(self.ctx.queue, i)? {
             self.needs_recreate = true;
         }
+        Ok(())
+    }
+
+    /// Wait until any queued TRANSFER_READ of an external present/test src image has completed.
+    /// Timeline wait only — not `device_wait_idle`.
+    pub fn wait_transfer_src_consumers(&self) -> Result<(), BackendError> {
+        if self.transfer_src_read_until > 0 {
+            self.wait_timeline(self.transfer_src_read_until)?;
+        }
+        Ok(())
+    }
+
+    /// Headless/windowed-shared: submit a TRANSFER_READ of `src` (copy into a tiny staging buffer) on the
+    /// frame timeline, matching `present_transfer_src` consumer ordering without needing a swapchain.
+    pub fn submit_transfer_src_read(&mut self, src: vk::Image, src_extent: vk::Extent2D) -> Result<(), BackendError> {
+        if src_extent.width == 0 || src_extent.height == 0 {
+            return Err(BackendError::BadConfig("transfer src extent"));
+        }
+        let fnum = self.frame_number + 1;
+        let si = self.slot_of(fnum);
+        if self.slots[si].submitted > 0 {
+            self.wait_timeline(self.slots[si].submitted)?;
+        }
+        // Persistent blit destination matching present_transfer_src's TRANSFER_READ of src via BLIT.
+        let need = src_extent;
+        let recreate = self.transfer_probe.as_ref().is_none_or(|img| img.extent != need);
+        if recreate {
+            if let Some(mut old) = self.transfer_probe.take() {
+                self.ctx.wait_idle();
+                old.destroy(&mut self.ctx);
+            }
+            self.transfer_probe = Some(GpuImage::new(
+                &mut self.ctx,
+                "transfer_src_probe",
+                need,
+                vk::Format::R8G8B8A8_UNORM,
+                vk::ImageUsageFlags::TRANSFER_DST
+                    | vk::ImageUsageFlags::TRANSFER_SRC
+                    | vk::ImageUsageFlags::COLOR_ATTACHMENT,
+                vk::ImageAspectFlags::COLOR,
+            )?);
+        }
+        let dst = self.transfer_probe.as_ref().unwrap().image;
+        let d = self.ctx.device.clone();
+        let cmd = self.slots[si].cmd;
+        let pool = self.slots[si].pool;
+        // SAFETY: slot wait completed; exclusive pool.
+        unsafe {
+            d.reset_command_pool(pool, vk::CommandPoolResetFlags::empty())?;
+            d.begin_command_buffer(
+                cmd,
+                &vk::CommandBufferBeginInfo::default().flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
+            )?;
+        }
+        // Same blit path as present_transfer_src (src stays TRANSFER_SRC_OPTIMAL).
+        self.record_blit_internal(cmd, src, src_extent, dst, need, true);
+        // SAFETY: recording complete.
+        unsafe { d.end_command_buffer(cmd)? };
+        let cbi = [vk::CommandBufferSubmitInfo::default().command_buffer(cmd)];
+        let signals = [vk::SemaphoreSubmitInfo::default()
+            .semaphore(self.timeline)
+            .value(fnum)
+            .stage_mask(vk::PipelineStageFlags2::ALL_COMMANDS)];
+        let submit = vk::SubmitInfo2::default().command_buffer_infos(&cbi).signal_semaphore_infos(&signals);
+        // SAFETY: cmd recorded; src live until timeline fnum.
+        unsafe { d.queue_submit2(self.ctx.queue, &[submit], vk::Fence::null())? };
+        self.slots[si].submitted = fnum;
+        self.frame_number = fnum;
+        self.transfer_src_read_until = fnum;
         Ok(())
     }
 
@@ -1747,6 +1847,9 @@ impl Drop for AshBackend {
         #[cfg(feature = "windowed")]
         if let Some(mut sc) = self.swapchain.take() {
             sc.destroy(&self.ctx);
+        }
+        if let Some(mut probe) = self.transfer_probe.take() {
+            probe.destroy(&mut self.ctx);
         }
         let mut slots = std::mem::take(&mut self.slots);
         for s in &mut slots {

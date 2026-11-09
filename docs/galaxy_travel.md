@@ -4,7 +4,7 @@ Observed Gaia EDR3 GCNS / Smart et al. 2021 only. Nearby catalogue (~100 pc nomi
 
 ## Launch
 
-Interactive (needs a display; parent may run this — this agent box has no desktop):
+Interactive (needs a display + GUI session; this agent lacks GUI automation tools — parent runs desktop smoke):
 
 ```bash
 cargo run -p render-ash --example galaxy_travel --features windowed --release -- \
@@ -48,3 +48,15 @@ UniversePass live: HDR splats → fixed exposure `PRESENT_EXPOSURE=300` Reinhard
 ## Precision / limits
 
 Whole-root-frame f64 precision limitations remain (large teleports/rebases). Catalogue is Sol-local; travel camera is hypothetical. Not commercial-cleared full-sky. SS2 / Earth / offscreen GCNS stills unchanged.
+
+## Window title status (not in-frame HUD)
+
+Each frame updates the window title with Sol-local `xyz_pc`, yaw/pitch (rad), speed (pc/s), selected count, grab/focus flags, and `OUTSIDE nominal 100pc survey` when beyond the nominal volume. There is **no** drawn on-screen overlay yet; do not treat stderr-only logs as a HUD.
+
+## Sync note (present path)
+
+After `present_transfer_src` blits the SDR image, the next `render_live` **timeline-waits** that consume before layout-transitioning SDR (fixes WRITE_AFTER_READ). Not `device_wait_idle` per frame.
+
+## Coordinate note
+
+Travel uses Sol-local ICRS metres with `Camera.origin = 0` (catalogue native frame). Nested `FrameTree` rebasing is not exercised on this path; whole-root f64 precision limits still apply for huge teleports.

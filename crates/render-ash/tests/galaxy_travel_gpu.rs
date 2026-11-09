@@ -44,3 +44,48 @@ fn live_tonemap_continuous_frames_resize_no_hdr_readback() {
     drop(be);
     assert_eq!(render_ash::validation::message_counts().0, 0);
 }
+
+#[test]
+fn live_after_transfer_src_consumer_has_no_sync_hazard() {
+    let mut be = match AshBackend::new(
+        BackendConfig { max_instances: 16, extent: (64, 64), validation: true, ..Default::default() },
+        None,
+    ) {
+        Ok(b) => b,
+        Err(e) => {
+            common::skip_or_fail("AshBackend::new", &e);
+            return;
+        }
+    };
+    common::check_validation(&be.ctx);
+    if !be.ctx.validation_enabled {
+        eprintln!("SKIP: validation layer not active");
+        return;
+    }
+    let mut pass = UniversePass::new(&mut be, 64, 64).unwrap();
+    let s = Source { id: 1, center: [32.0, 32.0], flux: 1.0, rgb: [1.0; 3] };
+    let splat = Splat::from_source(&s);
+    pass.render_live(&mut be, &[splat], PRESENT_EXPOSURE).unwrap();
+    let (w, h) = pass.extent();
+    // Mimic present_transfer_src: async TRANSFER_READ of SDR without waiting.
+    be.submit_transfer_src_read(pass.sdr_image(), ash::vk::Extent2D { width: w, height: h }).unwrap();
+    // Next live frame must not race the prior TRANSFER_READ (desktop bug).
+    let before = render_ash::validation::message_counts().0;
+    pass.render_live(&mut be, &[splat], PRESENT_EXPOSURE).unwrap();
+    let after = render_ash::validation::message_counts().0;
+    assert_eq!(
+        after, before,
+        "WRITE_AFTER_READ hazard on SDR after transfer consumer (errors {} -> {})",
+        before, after
+    );
+    // Continuous present-like cadence.
+    for _ in 0..4 {
+        be.submit_transfer_src_read(pass.sdr_image(), ash::vk::Extent2D { width: w, height: h }).unwrap();
+        let b = render_ash::validation::message_counts().0;
+        pass.render_live(&mut be, &[splat], PRESENT_EXPOSURE).unwrap();
+        assert_eq!(render_ash::validation::message_counts().0, b);
+    }
+    pass.free(&mut be);
+    drop(be);
+    assert_eq!(render_ash::validation::message_counts().0, 0);
+}

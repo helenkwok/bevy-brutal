@@ -12,12 +12,17 @@
 //!
 //! Controls (interactive): W/S forward/back, A/D strafe, R/F up/down, mouse look,
 //! Shift/Ctrl speed gears (±1), Esc release grab / quit on second Esc, Q quit.
-//! Units: speed shown in pc/s; positions Sol-local ICRS J2016 metres.
+//! Status: dynamic **window title** (xyz pc, yaw/pitch, speed, sel, grab/focus, coverage warning).
+//! There is no in-frame overlay HUD yet — title is the live readout.
+//! Focus loss clears key latches (no sticky WASD) and releases cursor grab.
+//! Units: speed in pc/s; positions Sol-local ICRS J2016 metres.
 //! Catalogue: Gaia EDR3 GCNS / Smart et al. 2021 — nearby survey, NOT full Milky Way.
 #![allow(clippy::too_many_arguments, clippy::collapsible_if)]
 use glam::DVec3;
 use planet::gcns::PARSEC_M;
-use planet::travel::{Coverage, FlightState, InputSample, NOMINAL_SURVEY_PC, StarIndex, default_look_source_id};
+use planet::travel::{
+    Coverage, FlightKeys, FlightState, InputSample, NOMINAL_SURVEY_PC, StarIndex, default_look_source_id, status_title,
+};
 use planet::universe::MAX_STARS;
 use render_ash::{
     AshBackend, BackendConfig,
@@ -367,7 +372,7 @@ fn run_interactive(args: &Args, index: &StarIndex, _raw_rows: usize) {
         backend: Option<AshBackend>,
         pass: Option<UniversePass>,
         flight: FlightState,
-        keys: Keys,
+        keys: FlightKeys,
         mouse_grabbed: bool,
         yaw_acc: f64,
         pitch_acc: f64,
@@ -378,17 +383,7 @@ fn run_interactive(args: &Args, index: &StarIndex, _raw_rows: usize) {
         frames: u64,
         quit: bool,
     }
-    #[derive(Default)]
-    struct Keys {
-        w: bool,
-        s: bool,
-        a: bool,
-        d: bool,
-        r: bool,
-        f: bool,
-        shift: bool,
-        ctrl: bool,
-    }
+
     impl ApplicationHandler for App {
         fn resumed(&mut self, event_loop: &ActiveEventLoop) {
             if self.window.is_some() {
@@ -426,12 +421,16 @@ fn run_interactive(args: &Args, index: &StarIndex, _raw_rows: usize) {
                 }
                 WindowEvent::Focused(f) => {
                     self.focus = f;
+                    self.keys.on_focus(f);
                     if !f {
                         self.mouse_grabbed = false;
                         if let Some(w) = &self.window {
                             let _ = w.set_cursor_grab(CursorGrabMode::None);
                             w.set_cursor_visible(true);
                         }
+                        eprintln!("focus lost: keys cleared, cursor released");
+                    } else {
+                        eprintln!("focus gained");
                     }
                 }
                 WindowEvent::Resized(size) => {
@@ -446,12 +445,19 @@ fn run_interactive(args: &Args, index: &StarIndex, _raw_rows: usize) {
                 }
                 WindowEvent::MouseInput { state: ElementState::Pressed, button: MouseButton::Left, .. } => {
                     if let Some(w) = &self.window {
-                        if w.set_cursor_grab(CursorGrabMode::Confined)
+                        match w
+                            .set_cursor_grab(CursorGrabMode::Confined)
                             .or_else(|_| w.set_cursor_grab(CursorGrabMode::Locked))
-                            .is_ok()
                         {
-                            w.set_cursor_visible(false);
-                            self.mouse_grabbed = true;
+                            Ok(()) => {
+                                w.set_cursor_visible(false);
+                                self.mouse_grabbed = true;
+                                eprintln!("cursor grab OK (Confined/Locked); Esc releases");
+                            }
+                            Err(e) => {
+                                self.mouse_grabbed = false;
+                                eprintln!("cursor grab FAILED: {e:?} (pointer may stay free)");
+                            }
                         }
                     }
                 }
@@ -477,6 +483,7 @@ fn run_interactive(args: &Args, index: &StarIndex, _raw_rows: usize) {
                                     let _ = w.set_cursor_grab(CursorGrabMode::None);
                                     w.set_cursor_visible(true);
                                 }
+                                eprintln!("Esc: cursor released");
                             } else {
                                 self.quit = true;
                                 event_loop.exit();
@@ -526,20 +533,15 @@ fn run_interactive(args: &Args, index: &StarIndex, _raw_rows: usize) {
                 dt = 0.0; // pause motion while unfocused; still present last frame
             }
             dt = dt.clamp(0.0, 0.1);
-            let gear = if self.keys.shift {
-                1
-            } else if self.keys.ctrl {
-                -1
-            } else {
-                0
-            };
+            let gear = self.keys.speed_gear();
+            let (forward, right, up) = if self.focus { self.keys.to_axes() } else { (0.0, 0.0, 0.0) };
             let sample = InputSample {
                 dt,
-                forward: (self.keys.w as i8 - self.keys.s as i8) as f32,
-                right: (self.keys.d as i8 - self.keys.a as i8) as f32,
-                up: (self.keys.r as i8 - self.keys.f as i8) as f32,
-                yaw_delta: std::mem::take(&mut self.yaw_acc),
-                pitch_delta: std::mem::take(&mut self.pitch_acc),
+                forward,
+                right,
+                up,
+                yaw_delta: if self.focus { std::mem::take(&mut self.yaw_acc) } else { 0.0 },
+                pitch_delta: if self.focus { std::mem::take(&mut self.pitch_acc) } else { 0.0 },
                 speed_gear: gear,
                 teleport: None,
             };
@@ -557,12 +559,24 @@ fn run_interactive(args: &Args, index: &StarIndex, _raw_rows: usize) {
             let (w, h) = pass.extent();
             let _ = be.present_transfer_src(pass.sdr_image(), ash::vk::Extent2D { width: w, height: h });
             self.frames += 1;
+            let speed = FlightState::speed_m_s(gear) / PARSEC_M;
+            let title = status_title(
+                self.flight.pos,
+                self.flight.yaw,
+                self.flight.pitch,
+                speed,
+                stats.selected,
+                self.mouse_grabbed,
+                self.focus,
+            );
+            if let Some(w) = &self.window {
+                w.set_title(&title);
+            }
             if self.frames % 120 == 1 {
                 let cov = Coverage::at(self.flight.pos);
-                let speed = FlightState::speed_m_s(gear) / PARSEC_M;
                 eprintln!(
-                    "t={} selected={} culled={} speed={:.4} pc/s outside={} warn='{}'",
-                    self.frames, stats.selected, stats.culled, speed, cov.outside_nominal, cov.warning
+                    "t={} selected={} culled={} speed={:.4} pc/s outside={} grab={} | {}",
+                    self.frames, stats.selected, stats.culled, speed, cov.outside_nominal, self.mouse_grabbed, title
                 );
             }
         }
@@ -585,7 +599,7 @@ fn run_interactive(args: &Args, index: &StarIndex, _raw_rows: usize) {
         window: None,
         backend: None,
         pass: None,
-        keys: Keys::default(),
+        keys: FlightKeys::default(),
         mouse_grabbed: false,
         yaw_acc: 0.0,
         pitch_acc: 0.0,

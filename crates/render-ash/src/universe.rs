@@ -528,6 +528,11 @@ impl UniversePass {
         if !exposure.is_finite() || exposure <= 0.0 || exposure > 1e12 {
             return Err(BackendError::BadConfig("invalid present exposure"));
         }
+        // SDR may still be TRANSFER_READ by an in-flight present/test blit. Wait that timeline
+        // value before layout-transitioning SDR (not device_wait_idle).
+        if self.sdr_initialized {
+            be.wait_transfer_src_consumers()?;
+        }
         let t0 = std::time::Instant::now();
         let bytes = bytemuck::cast_slice(stars);
         self.input.mapped_mut()[..bytes.len()].copy_from_slice(bytes);
