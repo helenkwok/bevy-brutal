@@ -60,3 +60,7 @@ After `present_transfer_src` blits the SDR image, the next `render_live` **timel
 ## Coordinate note
 
 Travel uses Sol-local ICRS metres with `Camera.origin = 0` (catalogue native frame). Nested `FrameTree` rebasing is not exercised on this path; whole-root f64 precision limits still apply for huge teleports.
+
+## Desktop verification label
+
+**Partial milestone** on `3386c9a`: Vulkan present sync clean; title/grab/Esc/tap-keys/focus/resize OK per parent desktop log. Mouse-look uses relative `DeviceEvent::MouseMotion` (not absolute `CursorMoved`); absolute Computer warps are not a look test. Held Shift/Ctrl/WASD not verified by tap-only automation. See `docs/GT1_README.md`.
