@@ -248,6 +248,83 @@ impl Selection {
         self.sources.sort_unstable_by(|a, b| b.flux.total_cmp(&a.flux).then(a.id.cmp(&b.id)));
         self.sources.truncate(limit.min(MAX_STARS));
     }
+    /// Same photometry as [`Self::update`], iterating only `indices` into `stars` (no clone).
+    pub fn update_indexed(&mut self, stars: &[Star], indices: &[u32], cam: &Camera, limit: usize) {
+        // Reuse update by gathering thin refs via a temporary pointer table would still allocate;
+        // instead duplicate the projection loop over indices only.
+        self.sources.clear();
+        self.heap.clear();
+        let limit = limit.min(MAX_STARS);
+        self.rejected = 0;
+        self.candidates = 0;
+        if !cam.origin.is_finite()
+            || !cam.pos.is_finite()
+            || !cam.forward.is_finite()
+            || !cam.right.is_finite()
+            || !cam.up.is_finite()
+            || !cam.fov.is_finite()
+            || !(0.01..3.0).contains(&cam.fov)
+            || cam.width == 0
+            || cam.width > 4096
+            || cam.height == 0
+            || cam.height > 4096
+        {
+            return;
+        }
+        let focal = cam.height as f64 / (2.0 * (cam.fov * 0.5).tan());
+        for &idx in indices {
+            let s = match stars.get(idx as usize) {
+                Some(s) => s,
+                None => {
+                    self.rejected += 1;
+                    continue;
+                }
+            };
+            let r = cam.relative(s);
+            let d2 = r.length_squared();
+            let z = r.dot(cam.forward);
+            if !r.is_finite()
+                || !d2.is_finite()
+                || d2 < 1.0
+                || z <= 0.0
+                || !s.lum.is_finite()
+                || s.lum <= 0.0
+                || s.rgb.iter().any(|c| !c.is_finite() || *c < 0.0)
+            {
+                self.rejected += 1;
+                continue;
+            }
+            let center = [
+                cam.width as f64 * 0.5 + r.dot(cam.right) / z * focal,
+                cam.height as f64 * 0.5 - r.dot(cam.up) / z * focal,
+            ];
+            if center.iter().any(|x| !x.is_finite()) {
+                self.rejected += 1;
+                continue;
+            }
+            if center[0] < -SUPPORT
+                || center[1] < -SUPPORT
+                || center[0] > cam.width as f64 + SUPPORT
+                || center[1] > cam.height as f64 + SUPPORT
+            {
+                self.rejected += 1;
+                continue;
+            }
+            let flux = s.lum * (AU * AU / d2);
+            if flux.is_finite() && flux > 0.0 {
+                self.candidates += 1;
+                let next = Ranked(Source { id: s.id, center, flux, rgb: s.rgb });
+                if self.heap.len() < limit {
+                    self.heap.push(next);
+                } else if limit > 0 && next < *self.heap.peek().unwrap() {
+                    *self.heap.peek_mut().unwrap() = next;
+                }
+            }
+        }
+        self.sources.extend(self.heap.drain().map(|x| x.0));
+        self.sources.sort_unstable_by(|a, b| b.flux.total_cmp(&a.flux).then(a.id.cmp(&b.id)));
+        self.sources.truncate(limit.min(MAX_STARS));
+    }
 }
 
 #[cfg(test)]

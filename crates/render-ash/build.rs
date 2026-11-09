@@ -56,6 +56,8 @@ const SHADERS: &[(&str, &str, &str, &str)] = &[
     ("planet.slang", "irradianceCS", "compute", "planet_irradiance"),
     ("universe.slang", "vertexMain", "vertex", "universe_vs"),
     ("universe.slang", "fragmentMain", "fragment", "universe_fs"),
+    ("universe_tonemap.slang", "tonemapVS", "vertex", "universe_tonemap_vs"),
+    ("universe_tonemap.slang", "tonemapFS", "fragment", "universe_tonemap_fs"),
     ("system.slang", "fullVS", "vertex", "system_vs"),
     ("system.slang", "systemFS", "fragment", "system_fs"),
 ];

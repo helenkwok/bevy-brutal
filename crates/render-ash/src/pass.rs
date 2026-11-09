@@ -1455,7 +1455,7 @@ impl AshBackend {
 
             #[cfg(feature = "windowed")]
             if let (Some(i), Some(sc)) = (image, self.swapchain.as_ref()) {
-                self.record_blit(cmd, slot.color.image, sc.images[i as usize], sc.extent);
+                self.record_blit(cmd, slot.color.image, self.extent, sc.images[i as usize], sc.extent);
             }
             let _ = image;
 
@@ -1465,7 +1465,14 @@ impl AshBackend {
     }
 
     #[cfg(feature = "windowed")]
-    fn record_blit(&self, cmd: vk::CommandBuffer, src: vk::Image, dst: vk::Image, dst_extent: vk::Extent2D) {
+    fn record_blit(
+        &self,
+        cmd: vk::CommandBuffer,
+        src: vk::Image,
+        src_extent: vk::Extent2D,
+        dst: vk::Image,
+        dst_extent: vk::Extent2D,
+    ) {
         use vk::AccessFlags2 as A;
         use vk::PipelineStageFlags2 as S;
         let d = &self.ctx.device;
@@ -1491,7 +1498,7 @@ impl AshBackend {
         };
         let region = [vk::ImageBlit {
             src_subresource: layers,
-            src_offsets: off(self.extent),
+            src_offsets: off(src_extent),
             dst_subresource: layers,
             dst_offsets: off(dst_extent),
         }];
@@ -1563,6 +1570,69 @@ impl AshBackend {
             old_d.destroy(&mut self.ctx);
         }
         self.extent = extent;
+        Ok(())
+    }
+
+    /// Blit an external R8G8B8A8 image already in TRANSFER_SRC_OPTIMAL to the swapchain and present.
+    /// Reuses AshBackend frames-in-flight + acquire/present semaphores (feature `windowed`).
+    #[cfg(feature = "windowed")]
+    pub fn present_transfer_src(&mut self, src: vk::Image, src_extent: vk::Extent2D) -> Result<(), BackendError> {
+        if self.swapchain.is_none() {
+            return Err(BackendError::NoSurface);
+        }
+        if src_extent.width == 0 || src_extent.height == 0 {
+            return Err(BackendError::BadConfig("present src extent"));
+        }
+        let fnum = self.frame_number + 1;
+        let si = self.slot_of(fnum);
+        if self.slots[si].submitted > 0 {
+            self.wait_timeline(self.slots[si].submitted)?;
+        }
+        let image = self.acquire_image(si)?;
+        let Some(i) = image else {
+            return Ok(());
+        };
+        let d = self.ctx.device.clone();
+        let cmd = self.slots[si].cmd;
+        let pool = self.slots[si].pool;
+        // SAFETY: slot wait completed; command pool exclusive to this slot.
+        unsafe {
+            d.reset_command_pool(pool, vk::CommandPoolResetFlags::empty())?;
+            d.begin_command_buffer(
+                cmd,
+                &vk::CommandBufferBeginInfo::default().flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
+            )?;
+        }
+        let dst_extent = self.swapchain.as_ref().unwrap().extent;
+        let dst = self.swapchain.as_ref().unwrap().images[i as usize];
+        self.record_blit(cmd, src, src_extent, dst, dst_extent);
+        // SAFETY: recording complete.
+        unsafe { d.end_command_buffer(cmd)? };
+
+        let cbi = [vk::CommandBufferSubmitInfo::default().command_buffer(cmd)];
+        let waits = [vk::SemaphoreSubmitInfo::default()
+            .semaphore(self.swapchain.as_ref().unwrap().acquire[si])
+            .stage_mask(vk::PipelineStageFlags2::ALL_TRANSFER)];
+        let signals = [
+            vk::SemaphoreSubmitInfo::default()
+                .semaphore(self.timeline)
+                .value(fnum)
+                .stage_mask(vk::PipelineStageFlags2::ALL_COMMANDS),
+            vk::SemaphoreSubmitInfo::default()
+                .semaphore(self.swapchain.as_ref().unwrap().render_finished[i as usize])
+                .stage_mask(vk::PipelineStageFlags2::ALL_COMMANDS),
+        ];
+        let submit = vk::SubmitInfo2::default()
+            .command_buffer_infos(&cbi)
+            .wait_semaphore_infos(&waits)
+            .signal_semaphore_infos(&signals);
+        // SAFETY: cmd recorded; resources live until timeline fnum.
+        unsafe { d.queue_submit2(self.ctx.queue, &[submit], vk::Fence::null())? };
+        self.slots[si].submitted = fnum;
+        self.frame_number = fnum;
+        if !self.swapchain.as_ref().unwrap().present(self.ctx.queue, i)? {
+            self.needs_recreate = true;
+        }
         Ok(())
     }
 

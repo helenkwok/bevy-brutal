@@ -8,7 +8,7 @@ build = "build.rs"
 [features]
 tracy = ["tracy-client/enable"]
 # Swapchain + present path (surface from raw-window-handle). Headless offscreen rendering is always available.
-windowed = []
+windowed = ["dep:winit"]
 
 [dependencies]
 lowlevel-abi.workspace = true
@@ -23,6 +23,7 @@ voxel.workspace = true
 rayon.workspace = true
 asset = { path = "../asset" }
 planet.workspace = true
+winit = { version = "0.30", optional = true }
 
 [dev-dependencies]
 png = "0.18.1"
@@ -58,6 +59,13 @@ name = "drape_lod"
 
 [[example]]
 name = "universe"
+
+[[example]]
+name = "observed"
+
+[[example]]
+name = "galaxy_travel"
+required-features = ["windowed"]
 
 [lints]
 workspace = true

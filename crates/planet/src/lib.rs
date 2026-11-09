@@ -39,5 +39,8 @@ pub mod universe;
 /// External observed GCNS records (no bundled data).
 pub mod gcns;
 
+/// GT1 Sol-neighbourhood flight: spatial index, coverage HUD helpers, replayable free-flight.
+pub mod travel;
+
 /// Independent CNS5 / DESI positional diagnostics (not merged or photometric stars).
 pub mod observed;
