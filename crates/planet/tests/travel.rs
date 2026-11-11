@@ -318,3 +318,24 @@ fn status_title_includes_coverage_and_pose() {
     assert!(!t2.contains("OUTSIDE"));
     assert!(t2.contains("free/unfocus"));
 }
+
+#[test]
+fn camera_valid_far_from_sol() {
+    // Regression: look target pos+1m vanished in f64 rounding beyond ~10 pc.
+    for d_pc in [10.0, 100.0, 1000.0, 5000.0] {
+        let mut f = FlightState::sol_looking_at(DVec3::new(1.0, 0.3, 0.2) * PARSEC_M);
+        f.set_approach_limit(None);
+        f.integrate(&InputSample {
+            dt: 0.0,
+            forward: 0.0,
+            right: 0.0,
+            up: 0.0,
+            yaw_delta: 0.0,
+            pitch_delta: 0.0,
+            speed_gear: 0,
+            teleport: Some(DVec3::splat(d_pc * PARSEC_M)),
+        });
+        let c = f.camera(640, 360).expect("camera far from Sol");
+        assert!(c.forward.is_finite() && (c.forward.length() - 1.0).abs() < 1e-9);
+    }
+}

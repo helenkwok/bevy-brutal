@@ -12,7 +12,8 @@ Vary tonemapVS(uint v:SV_VulkanVertexID) {
 }
 [shader("fragment")]
 float4 tonemapFS(Vary i):SV_Target0 {
-  float3 a=hdr.SampleLevel(samp,float2(i.uv.x,1.0-i.uv.y),0).rgb*pc.exposure;
+  // Vulkan NDC (-1,-1) is the top-left pixel and uv (0,0) is the texture's top-left: no flip.
+  float3 a=hdr.SampleLevel(samp,i.uv,0).rgb*pc.exposure;
   float peak=max(max(a.r,a.g),a.b);
   a=a/(1.0+peak);
   float3 s;

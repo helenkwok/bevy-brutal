@@ -508,7 +508,8 @@ fn run_interactive(args: &Args, index: &StarIndex, _raw_rows: usize) {
         ) {
             if let winit::event::DeviceEvent::MouseMotion { delta } = event {
                 if self.mouse_grabbed && self.focus {
-                    self.yaw_acc += delta.0 * 0.002;
+                    // yaw grows towards +Y (counter-clockwise about +Z), i.e. a left turn: mouse right turns right.
+                    self.yaw_acc -= delta.0 * 0.002;
                     self.pitch_acc -= delta.1 * 0.002;
                 }
             }

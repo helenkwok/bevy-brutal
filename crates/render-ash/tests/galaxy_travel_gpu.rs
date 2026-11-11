@@ -89,3 +89,39 @@ fn live_after_transfer_src_consumer_has_no_sync_hazard() {
     drop(be);
     assert_eq!(render_ash::validation::message_counts().0, 0);
 }
+
+/// The presented SDR image must keep the projection's pixel rows: a splat near the top-left stays
+/// top-left (the pre-RS1 tonemap flipped rows, rolling real skies by 180 degrees with the old camera).
+#[test]
+fn live_sdr_preserves_orientation() {
+    let mut be = match AshBackend::new(
+        BackendConfig { max_instances: 16, extent: (64, 32), validation: true, ..Default::default() },
+        None,
+    ) {
+        Ok(b) => b,
+        Err(e) => {
+            common::skip_or_fail("AshBackend::new", &e);
+            return;
+        }
+    };
+    common::check_validation(&be.ctx);
+    let mut pass = UniversePass::with_capacity(&mut be, 64, 32, 4).unwrap();
+    let s = Source { id: 1, center: [10.5, 5.5], flux: 1.0, rgb: [1.0; 3] };
+    pass.render_live(&mut be, &[Splat::from_source(&s)], PRESENT_EXPOSURE).unwrap();
+    let rgba = pass.read_sdr_rgba(&mut be).unwrap();
+    let (mut best, mut at) = (0u8, (0usize, 0usize));
+    for y in 0..32 {
+        for x in 0..64 {
+            let v = rgba[(y * 64 + x) * 4];
+            if v > best {
+                best = v;
+                at = (x, y);
+            }
+        }
+    }
+    assert_eq!(at, (10, 5), "peak pixel moved (row flip?)");
+    assert!(UniversePass::with_capacity(&mut be, 64, 32, 0).is_err());
+    pass.free(&mut be);
+    drop(be);
+    assert_eq!(render_ash::validation::message_counts().0, 0);
+}

@@ -95,8 +95,11 @@ impl Camera {
             return None;
         }
         let forward = (target - pos).try_normalize()?;
-        let right = up.cross(forward).try_normalize()?;
-        Some(Self { origin: DVec3::ZERO, pos, right, up: forward.cross(right), forward, fov, width, height })
+        // Screen-right for a right-handed world: forward x up. (Before RS1 this was up x forward,
+        // which mirrored the image; the old tonemap's vertical flip turned that into a 180 degree
+        // roll, so real skies showed upside down. See tests `sky_handedness_*`.)
+        let right = forward.cross(up).try_normalize()?;
+        Some(Self { origin: DVec3::ZERO, pos, right, up: right.cross(forward), forward, fov, width, height })
     }
     pub fn relative(&self, s: &Star) -> DVec3 {
         (s.pos - self.origin) - self.pos
@@ -380,12 +383,32 @@ mod tests {
         let mut a = Selection::new();
         a.update(&stars, &camera(), MAX_STARS);
         let x = a.sources[0].center[0];
+        // forward +Z, up +Y => screen-right is -X; stepping the camera +X (to its left) moves the
+        // star right on screen.
         let c = Camera::look_at(DVec3::X * AU * 0.1, DVec3::X * AU * 0.1 + DVec3::Z, DVec3::Y, 1.0, 128, 128).unwrap();
         a.update(&stars, &c, MAX_STARS);
-        assert!(a.sources[0].center[0] < x - 1.0);
+        assert!(a.sources[0].center[0] > x + 1.0);
         let c = Camera::look_at(DVec3::ZERO, DVec3::new(0.1, 0.0, 1.0), DVec3::Y, 1.0, 128, 128).unwrap();
         a.update(&stars, &c, MAX_STARS);
         assert!((a.sources[0].flux - 1.0).abs() < 1e-12);
+    }
+    #[test]
+    fn sky_handedness_east_left_north_up() {
+        // Looking at Orion's belt (RA 84, Dec -1) from Sol with celestial north up, a star further
+        // east (larger RA) must be LEFT of centre and a star further north must be ABOVE centre,
+        // as on the real sky seen from inside the celestial sphere.
+        let dir = |ra: f64, dec: f64| {
+            let (a, d) = (ra.to_radians(), dec.to_radians());
+            DVec3::new(d.cos() * a.cos(), d.cos() * a.sin(), d.sin())
+        };
+        let c = Camera::look_at(DVec3::ZERO, dir(84.0, -1.0), DVec3::Z, 0.8, 200, 100).unwrap();
+        let star = |id, ra, dec| Star { id, pos: dir(ra, dec) * 1e17, lum: 1.0, rgb: [1.0; 3] };
+        let mut s = Selection::new();
+        s.update(&[star(1, 90.0, -1.0)], &c, 1);
+        assert!(s.sources[0].center[0] < 100.0, "east must be left: {:?}", s.sources[0].center);
+        s.update(&[star(2, 84.0, 9.0)], &c, 1);
+        assert!(s.sources[0].center[1] < 50.0, "north must be up: {:?}", s.sources[0].center);
+        assert!((c.right.cross(c.up) + c.forward).length() < 1e-12, "right x up = -forward (right-handed view)");
     }
     #[test]
     fn considers_records_beyond_gpu_cap() {

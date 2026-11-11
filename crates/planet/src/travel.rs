@@ -362,9 +362,9 @@ impl FlightState {
         let cp = self.pitch.cos();
         let forward = DVec3::new(self.yaw.cos() * cp, self.yaw.sin() * cp, self.pitch.sin()).normalize_or_zero();
         let world_up = DVec3::Z;
-        // Right-handed travel basis matching Camera::look_at (right = up × forward).
-        let right = world_up.cross(forward).normalize_or_zero();
-        let up = forward.cross(right).normalize_or_zero();
+        // Right-handed travel basis matching Camera::look_at (screen right = forward x up).
+        let right = forward.cross(world_up).normalize_or_zero();
+        let up = right.cross(forward).normalize_or_zero();
         (forward, right, up)
     }
 
@@ -373,7 +373,10 @@ impl FlightState {
         if !self.pos.is_finite() || !forward.is_finite() || forward.length_squared() < 1e-30 {
             return None;
         }
-        let mut c = Camera::look_at(self.pos, self.pos + forward, up, 60f64.to_radians(), width, height)?;
+        // Look target one parsec ahead: `pos + forward` (1 m) is lost to f64 rounding once |pos| is
+        // beyond ~10 pc (ulp(3e17 m) = 64 m), which made camera() return None far from Sol.
+        let target = self.pos + forward * PARSEC_M.max(self.pos.length() * 1e-3);
+        let mut c = Camera::look_at(self.pos, target, up, 60f64.to_radians(), width, height)?;
         c.origin = self.origin;
         Some(c)
     }
