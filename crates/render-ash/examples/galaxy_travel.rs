@@ -10,8 +10,14 @@
 //!     --replay /path/to/inputs.json --frames 120 --capture out/quality/GT1_sheet \
 //!     --size 640x360
 //!
+//! Real observed star tiles (RS1; Gaia DR3 + Bailer-Jones, Hipparcos, GCNS to ~1 kpc):
+//!   ... --example galaxy_travel --features windowed --release -- --tiles \
+//!     /workspace/data/astro/real_starfield/tiles/rs1.rstile [--budget 600000 --cap 262144]
+//!   headless tiles flight + PNG sheet: add `--frames 64 --capture out/quality/real_starfield/gt1_tiles`
+//!
 //! Controls (interactive): W/S forward/back, A/D strafe, R/F up/down, mouse look,
-//! Shift/Ctrl speed gears (±1), Esc release grab / quit on second Esc, Q quit.
+//! Shift/Ctrl speed gears (±1), [ / ] base speed gear down/up (0.01 pc/s x 2^gear, max 2^14),
+//! Esc release grab / quit on second Esc, Q quit.
 //! Status: dynamic **window title** (xyz pc, yaw/pitch, speed, sel, grab/focus, coverage warning).
 //! There is no in-frame overlay HUD yet — title is the live readout.
 //! Focus loss clears key latches (no sticky WASD) and releases cursor grab.
@@ -20,13 +26,14 @@
 #![allow(clippy::too_many_arguments, clippy::collapsible_if)]
 use glam::DVec3;
 use planet::gcns::PARSEC_M;
+use planet::starfield::{Decoded, FileBacking, TileStream, decode_block, project};
 use planet::travel::{
     Coverage, FlightKeys, FlightState, InputSample, NOMINAL_SURVEY_PC, StarIndex, default_look_source_id, status_title,
 };
 use planet::universe::MAX_STARS;
 use render_ash::{
     AshBackend, BackendConfig,
-    universe::{PRESENT_EXPOSURE, Splat, UniversePass},
+    universe::{PRESENT_EXPOSURE, Splat, UniversePass, splats_with_halo},
 };
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -59,6 +66,9 @@ fn parse_args() -> Args {
         height: h,
         headless: flag("--headless") || arg("--replay").is_some(),
         validation: !flag("--no-validation"),
+        tiles: arg("--tiles").map(PathBuf::from),
+        budget: arg("--budget").and_then(|v| v.parse().ok()).unwrap_or(600_000),
+        cap: arg("--cap").and_then(|v| v.parse().ok()).unwrap_or(262_144),
     }
 }
 struct Args {
@@ -71,6 +81,128 @@ struct Args {
     height: u32,
     headless: bool,
     validation: bool,
+    tiles: Option<PathBuf>,
+    budget: u64,
+    cap: usize,
+}
+
+/// RS1 real-star tile source: stream by camera distance, project brighter than completeness.
+struct TileSource {
+    stream: TileStream<FileBacking>,
+    decoded: Vec<Decoded>,
+    budget: u64,
+    cap: usize,
+    m_complete: f64,
+    submitted: usize,
+}
+impl TileSource {
+    fn open(path: &Path, budget: u64, cap: usize) -> Self {
+        let b = FileBacking::open(path).unwrap_or_else(|e| {
+            eprintln!("RS1 tiles {}: {e}. Run tools/real_starfield + build_starfield first.", path.display());
+            std::process::exit(1);
+        });
+        let stream = TileStream::new(b, budget.max(1) * 2).expect("RSTILE01");
+        eprintln!(
+            "RS1 tiles {}: {} observed stars (gcns/gaia/hip = {:?}), {} nodes",
+            path.display(),
+            stream.index.header.star_count,
+            stream.index.header.src_counts,
+            stream.index.header.node_count
+        );
+        Self { stream, decoded: Vec::new(), budget, cap, m_complete: f64::NAN, submitted: 0 }
+    }
+    fn frame(&mut self, cam: &planet::universe::Camera, out: &mut Vec<Splat>) -> Vec<u64> {
+        let cam_pc = (cam.origin + cam.pos) / PARSEC_M;
+        let (plan, _st) = self.stream.update(cam_pc, self.budget).expect("tile read");
+        self.decoded.clear();
+        for n in &plan.nodes {
+            decode_block(&self.stream.index.nodes[*n as usize], &self.stream.cache[n], &mut self.decoded);
+        }
+        let (src, ps) = project(&self.decoded, cam, plan.m_complete, 99.0, self.cap, &self.stream.index.lut);
+        self.m_complete = plan.m_complete;
+        self.submitted = ps.submitted;
+        out.clear();
+        splats_with_halo(&src, PRESENT_EXPOSURE as f64, out);
+        src.iter().map(|s| s.id).collect()
+    }
+}
+
+/// Headless deterministic RS1 flight Sol -> ~1 kpc (gear 14), PNG captures, replay determinism.
+fn run_tiles_replay(args: &Args, look: DVec3, tiles: &Path) {
+    let mut src = TileSource::open(tiles, args.budget, args.cap);
+    let n = args.frames.max(16);
+    let samples: Vec<InputSample> = (0..n)
+        .map(|i| InputSample {
+            dt: 0.1,
+            forward: 1.0,
+            right: 0.0,
+            up: 0.0,
+            yaw_delta: if (n / 4..n / 2).contains(&i) { -0.01 } else { 0.0 },
+            pitch_delta: 0.0,
+            speed_gear: planet::travel::MAX_GEAR,
+            teleport: None,
+        })
+        .collect();
+    let mut be = AshBackend::new(
+        BackendConfig {
+            max_instances: 16,
+            extent: (args.width, args.height),
+            validation: args.validation,
+            ..Default::default()
+        },
+        None,
+    )
+    .expect("AshBackend");
+    let mut pass = UniversePass::with_capacity(&mut be, args.width, args.height, args.cap + args.cap / 4).unwrap();
+    let mut flight = FlightState::sol_looking_at(look);
+    flight.set_approach_limit(None);
+    let mut splats = Vec::new();
+    let mut ids = Vec::new();
+    if let Some(d) = &args.capture {
+        std::fs::create_dir_all(d).unwrap();
+    }
+    let mut log = Vec::new();
+    for (fi, s) in samples.iter().enumerate() {
+        let t0 = Instant::now();
+        flight.integrate(s);
+        let cam = flight.camera(args.width, args.height).unwrap();
+        ids.push(src.frame(&cam, &mut splats));
+        let t = pass.render_live(&mut be, &splats, PRESENT_EXPOSURE).unwrap();
+        let ms = t0.elapsed().as_secs_f64() * 1e3;
+        let pc = flight.pos / PARSEC_M;
+        log.push(format!(
+            "{{\"frame\":{fi},\"pos_pc\":[{:.2},{:.2},{:.2}],\"dist_pc\":{:.1},\"m_complete\":{:.3},\"submitted\":{},\"resident\":{},\"frame_ms\":{ms:.1},\"gpu_ms\":{:.1}}}",
+            pc.x, pc.y, pc.z, pc.length(), src.m_complete, src.submitted,
+            src.stream.cache.values().map(|b| b.stars.len()).sum::<usize>(), t.gpu_ms
+        ));
+        if let Some(d) = &args.capture
+            && (fi % (n / 8).max(1) == 0 || fi + 1 == n)
+        {
+            let rgba = pass.read_sdr_rgba(&mut be).unwrap();
+            write_png(&d.join(format!("frame_{fi:04}.png")), args.width, args.height, &rgba);
+        }
+        if fi % 8 == 0 || fi + 1 == n {
+            eprintln!("{}", log.last().unwrap());
+        }
+    }
+    // Determinism: a fresh stream along the same path selects identical star ids.
+    let mut src2 = TileSource::open(tiles, args.budget, args.cap);
+    let mut f2 = FlightState::sol_looking_at(look);
+    f2.set_approach_limit(None);
+    for (i, s) in samples.iter().enumerate() {
+        f2.integrate(s);
+        let cam = f2.camera(args.width, args.height).unwrap();
+        assert_eq!(src2.frame(&cam, &mut Vec::new()), ids[i], "RS1 replay ids diverge @ {i}");
+    }
+    if let Some(d) = &args.capture {
+        make_contact_sheet(d, args.width, args.height);
+        std::fs::write(d.join("gt1_tiles_flight.json"), format!("[\n{}\n]\n", log.join(",\n"))).unwrap();
+    }
+    pass.free(&mut be);
+    drop(be);
+    let (e, w) = render_ash::validation::message_counts();
+    eprintln!("RS1 tiles replay: frames={n} determinism=ok validation errors={e} warnings={w}");
+    assert_eq!(e, 0);
 }
 
 fn load_catalogue(path: &Path) -> (StarIndex, usize) {
@@ -382,6 +514,8 @@ fn run_interactive(args: &Args, index: &StarIndex, _raw_rows: usize) {
         sel: planet::universe::Selection,
         frames: u64,
         quit: bool,
+        tiles: Option<TileSource>,
+        base_gear: i8,
     }
 
     impl ApplicationHandler for App {
@@ -407,7 +541,11 @@ fn run_interactive(args: &Args, index: &StarIndex, _raw_rows: usize) {
                 },
             )
             .expect("windowed backend");
-            let pass = UniversePass::new(&mut be, self.args.width, self.args.height).unwrap();
+            let pass = match &self.tiles {
+                Some(t) => UniversePass::with_capacity(&mut be, self.args.width, self.args.height, t.cap + t.cap / 4),
+                None => UniversePass::new(&mut be, self.args.width, self.args.height),
+            }
+            .unwrap();
             self.window = Some(window);
             self.backend = Some(be);
             self.pass = Some(pass);
@@ -468,6 +606,12 @@ fn run_interactive(args: &Args, index: &StarIndex, _raw_rows: usize) {
                         PhysicalKey::Code(KeyCode::KeyS) => self.keys.s = down,
                         PhysicalKey::Code(KeyCode::KeyA) => self.keys.a = down,
                         PhysicalKey::Code(KeyCode::KeyD) => self.keys.d = down,
+                        PhysicalKey::Code(KeyCode::BracketRight) if down => {
+                            self.base_gear = (self.base_gear + 1).min(planet::travel::MAX_GEAR)
+                        }
+                        PhysicalKey::Code(KeyCode::BracketLeft) if down => {
+                            self.base_gear = (self.base_gear - 1).max(-3)
+                        }
                         PhysicalKey::Code(KeyCode::KeyR) => self.keys.r = down,
                         PhysicalKey::Code(KeyCode::KeyF) => self.keys.f = down,
                         PhysicalKey::Code(KeyCode::ShiftLeft) | PhysicalKey::Code(KeyCode::ShiftRight) => {
@@ -534,7 +678,7 @@ fn run_interactive(args: &Args, index: &StarIndex, _raw_rows: usize) {
                 dt = 0.0; // pause motion while unfocused; still present last frame
             }
             dt = dt.clamp(0.0, 0.1);
-            let gear = self.keys.speed_gear();
+            let gear = self.base_gear + self.keys.speed_gear();
             let (forward, right, up) = if self.focus { self.keys.to_axes() } else { (0.0, 0.0, 0.0) };
             let sample = InputSample {
                 dt,
@@ -551,9 +695,15 @@ fn run_interactive(args: &Args, index: &StarIndex, _raw_rows: usize) {
                 Some(c) => c,
                 None => return,
             };
-            let stats = self.index.select(&cam, MAX_STARS, &mut self.sel);
-            self.splats.clear();
-            self.splats.extend(self.sel.sources.iter().map(Splat::from_source));
+            let selected = if let Some(t) = self.tiles.as_mut() {
+                t.frame(&cam, &mut self.splats);
+                t.submitted
+            } else {
+                let stats = self.index.select(&cam, MAX_STARS, &mut self.sel);
+                self.splats.clear();
+                self.splats.extend(self.sel.sources.iter().map(Splat::from_source));
+                stats.selected
+            };
             if pass.render_live(be, &self.splats, PRESENT_EXPOSURE).is_err() {
                 return;
             }
@@ -561,23 +711,33 @@ fn run_interactive(args: &Args, index: &StarIndex, _raw_rows: usize) {
             let _ = be.present_transfer_src(pass.sdr_image(), ash::vk::Extent2D { width: w, height: h });
             self.frames += 1;
             let speed = FlightState::speed_m_s(gear) / PARSEC_M;
-            let title = status_title(
+            let mut title = status_title(
                 self.flight.pos,
                 self.flight.yaw,
                 self.flight.pitch,
                 speed,
-                stats.selected,
+                selected,
                 self.mouse_grabbed,
                 self.focus,
             );
+            if let Some(t) = &self.tiles {
+                // RS1 tiles reach ~1 kpc; the GCNS 100 pc coverage warning does not apply to them.
+                title = format!(
+                    "RS1 real stars | {:.1} pc from Sol | complete to G={:.2} | gear {} | {}",
+                    self.flight.pos.length() / PARSEC_M,
+                    t.m_complete,
+                    gear,
+                    title.replace("GT1 GCNS | ", "")
+                );
+            }
             if let Some(w) = &self.window {
                 w.set_title(&title);
             }
             if self.frames % 120 == 1 {
                 let cov = Coverage::at(self.flight.pos);
                 eprintln!(
-                    "t={} selected={} culled={} speed={:.4} pc/s outside={} grab={} | {}",
-                    self.frames, stats.selected, stats.culled, speed, cov.outside_nominal, self.mouse_grabbed, title
+                    "t={} selected={} speed={:.4} pc/s outside={} grab={} | {}",
+                    self.frames, selected, speed, cov.outside_nominal, self.mouse_grabbed, title
                 );
             }
         }
@@ -595,6 +755,9 @@ fn run_interactive(args: &Args, index: &StarIndex, _raw_rows: usize) {
             height: args.height,
             headless: false,
             validation: args.validation,
+            tiles: args.tiles.clone(),
+            budget: args.budget,
+            cap: args.cap,
         },
         index: StarIndex::build(index.stars(), 5.0 * PARSEC_M),
         window: None,
@@ -610,7 +773,12 @@ fn run_interactive(args: &Args, index: &StarIndex, _raw_rows: usize) {
         sel: planet::universe::Selection::new(),
         frames: 0,
         quit: false,
+        tiles: args.tiles.as_ref().map(|p| TileSource::open(p, args.budget, args.cap)),
+        base_gear: if args.tiles.is_some() { 6 } else { 0 },
     };
+    if app.tiles.is_some() {
+        app.flight.set_approach_limit(None);
+    }
     event_loop.run_app(&mut app).unwrap();
     if let (Some(mut be), Some(pass)) = (app.backend.take(), app.pass.take()) {
         pass.free(&mut be);
@@ -627,7 +795,12 @@ fn main() {
         NOMINAL_SURVEY_PC,
         PRESENT_EXPOSURE
     );
-    if args.headless || args.replay.is_some() || args.frames > 0 || args.capture.is_some() {
+    if let Some(t) = args.tiles.clone().filter(|_| args.headless || args.frames > 0 || args.capture.is_some()) {
+        // Fly in the Galactic plane toward l=90, b=0 (Cygnus; ICRS RA 318.004, Dec +48.330).
+        let (ra, de) = (318.004f64.to_radians(), 48.330f64.to_radians());
+        let dir = DVec3::new(de.cos() * ra.cos(), de.cos() * ra.sin(), de.sin());
+        run_tiles_replay(&args, dir * PARSEC_M, &t);
+    } else if args.headless || args.replay.is_some() || args.frames > 0 || args.capture.is_some() {
         run_replay(&args, &index, raw_rows);
     } else {
         #[cfg(feature = "windowed")]
