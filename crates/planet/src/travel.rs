@@ -16,6 +16,9 @@ pub const DEFAULT_LOOK_SOURCE_ID: u64 = 5_853_498_713_190_525_696;
 /// Stop free-flight before unresolved point singularity (1000 AU).
 pub const APPROACH_STOP_AU: f64 = 1000.0;
 
+/// Highest speed gear: 0.01 * 2^14 = 163.84 pc/s (crosses the 1 kpc real-star tiles in seconds).
+pub const MAX_GEAR: i8 = 14;
+
 /// Base cruise speed: 0.01 pc / s at gear 0 (displayed units: pc/s).
 pub const BASE_SPEED_PC_S: f64 = 0.01;
 
@@ -280,7 +283,7 @@ pub struct InputSample {
     pub up: f32,
     pub yaw_delta: f64,
     pub pitch_delta: f64,
-    /// Speed gear offset; gear 0 => BASE_SPEED_PC_S. Clamped to [-3, 8].
+    /// Speed gear offset; gear 0 => BASE_SPEED_PC_S, doubling per gear. Clamped to [-3, MAX_GEAR].
     pub speed_gear: i8,
     pub teleport: Option<DVec3>,
 }
@@ -310,7 +313,7 @@ impl FlightState {
     }
 
     pub fn speed_m_s(gear: i8) -> f64 {
-        let g = gear.clamp(-3, 8) as i32;
+        let g = gear.clamp(-3, MAX_GEAR) as i32;
         BASE_SPEED_PC_S * PARSEC_M * 2f64.powi(g)
     }
 

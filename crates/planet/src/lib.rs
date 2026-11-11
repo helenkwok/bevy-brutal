@@ -42,5 +42,8 @@ pub mod gcns;
 /// GT1 Sol-neighbourhood flight: spatial index, coverage HUD helpers, replayable free-flight.
 pub mod travel;
 
+/// RS1 real observed starfield: merge/dedupe, RSTILE01 octree tiles, streaming selection.
+pub mod starfield;
+
 /// Independent CNS5 / DESI positional diagnostics (not merged or photometric stars).
 pub mod observed;
