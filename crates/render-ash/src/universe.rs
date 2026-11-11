@@ -30,6 +30,52 @@ impl Splat {
         }
     }
 }
+/// Fixed display PSF wing for the observed real-star path: the same for every star, energy
+/// conserving (core gets `1 - HALO_FRACTION`), modelling optical scatter so brighter catalogue
+/// stars read larger, as in eye/camera images. Not a per-star size fudge or a grade.
+pub const HALO_FRACTION: f64 = 0.06;
+pub const HALO_SIGMA_PX: f64 = 3.5;
+/// Halo splats whose peak (after `exposure`) is below this pre-tonemap value are skipped and their
+/// energy stays in the core (an 8-bit SDR step is ~1/255 after Reinhard + sRGB).
+pub const HALO_MIN_PEAK: f64 = 2e-4;
+
+/// Core + halo splats for `sources` (core first, halos appended). Returns the halo count.
+pub fn splats_with_halo(sources: &[Source], exposure: f64, out: &mut Vec<Splat>) -> usize {
+    let halo_norm = 2.0 * std::f64::consts::PI * HALO_SIGMA_PX * HALO_SIGMA_PX;
+    let start = out.len();
+    let mut halos = Vec::new();
+    for s in sources {
+        let halo_peak = exposure * s.flux * HALO_FRACTION / halo_norm;
+        if halo_peak >= HALO_MIN_PEAK {
+            let core = Source { flux: s.flux * (1.0 - HALO_FRACTION), ..*s };
+            out.push(Splat::from_source(&core));
+            let h = Source { flux: s.flux * HALO_FRACTION, ..*s };
+            let mut sp = Splat::from_source(&h);
+            let norm = halo_source_norm(&h);
+            sp.position[2] = HALO_SIGMA_PX as f32;
+            sp.position[3] = (1.0 / norm) as f32;
+            halos.push(sp);
+        } else {
+            out.push(Splat::from_source(s));
+        }
+    }
+    let n = halos.len();
+    out.extend(halos);
+    debug_assert_eq!(out.len() - start, sources.len() + n);
+    n
+}
+/// Discrete normaliser of the halo Gaussian over its finite square support (as `Source::norm`).
+fn halo_source_norm(s: &Source) -> f64 {
+    let sig = HALO_SIGMA_PX;
+    let sup = 4.0 * sig;
+    let axis = |c: f64| {
+        let lo = (c - sup - 0.5).ceil() as i32;
+        let hi = (c + sup - 0.5).floor() as i32;
+        (lo..=hi).map(|p| (-0.5 * ((p as f64 + 0.5 - c) / sig).powi(2)).exp()).sum::<f64>()
+    };
+    axis(s.center[0]) * axis(s.center[1])
+}
+
 #[derive(Default, Debug)]
 pub struct UniverseTiming {
     pub gpu_ms: f64,
@@ -54,7 +100,10 @@ pub struct UniversePass {
     height: u32,
     initialized: bool,
     sdr_initialized: bool,
+    capacity: usize,
 }
+/// Upper bound for [`UniversePass::with_capacity`] (32 B per splat in host-visible memory).
+pub const MAX_CAPACITY: usize = 1 << 22;
 fn extent_ok(w: u32, h: u32) -> Result<(), BackendError> {
     if w == 0 || h == 0 || w > 4096 || h > 4096 {
         Err(BackendError::BadConfig("universe extent must be 1..4096"))
@@ -231,11 +280,18 @@ fn rebind_hdr(d: &ash::Device, set: vk::DescriptorSet, hdr_view: vk::ImageView) 
 }
 impl UniversePass {
     pub fn new(be: &mut AshBackend, width: u32, height: u32) -> Result<Self, BackendError> {
+        Self::with_capacity(be, width, height, MAX_STARS)
+    }
+    /// Same pass with a larger splat buffer (observed real-starfield tiles); `1..=MAX_CAPACITY`.
+    pub fn with_capacity(be: &mut AshBackend, width: u32, height: u32, capacity: usize) -> Result<Self, BackendError> {
         extent_ok(width, height)?;
+        if capacity == 0 || capacity > MAX_CAPACITY {
+            return Err(BackendError::BadConfig("universe capacity must be 1..=MAX_CAPACITY"));
+        }
         let mut input = GpuBuffer::new(
             &mut be.ctx,
             "universe_stars",
-            (MAX_STARS * 32) as u64,
+            (capacity * 32) as u64,
             vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
             MemoryLocation::CpuToGpu,
         )?;
@@ -343,7 +399,11 @@ impl UniversePass {
             height,
             initialized: false,
             sdr_initialized: false,
+            capacity,
         })
+    }
+    pub fn capacity(&self) -> usize {
+        self.capacity
     }
     pub fn resize(&mut self, be: &mut AshBackend, w: u32, h: u32) -> Result<(), BackendError> {
         extent_ok(w, h)?;
@@ -375,8 +435,8 @@ impl UniversePass {
     pub fn sdr_image(&self) -> vk::Image {
         self.sdr.image
     }
-    fn validate_splats(stars: &[Splat]) -> Result<(), BackendError> {
-        if stars.len() > MAX_STARS {
+    fn validate_splats(&self, stars: &[Splat]) -> Result<(), BackendError> {
+        if stars.len() > self.capacity {
             return Err(BackendError::BadConfig("universe splat capacity exceeded"));
         }
         if stars.iter().any(|s| {
@@ -398,7 +458,7 @@ impl UniversePass {
         be: &mut AshBackend,
         stars: &[Splat],
     ) -> Result<(&[[f32; 4]], UniverseTiming), BackendError> {
-        Self::validate_splats(stars)?;
+        self.validate_splats(stars)?;
         be.ctx.wait_idle();
         let bytes = bytemuck::cast_slice(stars);
         self.input.mapped_mut()[..bytes.len()].copy_from_slice(bytes);
@@ -524,7 +584,7 @@ impl UniversePass {
         stars: &[Splat],
         exposure: f32,
     ) -> Result<UniverseTiming, BackendError> {
-        Self::validate_splats(stars)?;
+        self.validate_splats(stars)?;
         if !exposure.is_finite() || exposure <= 0.0 || exposure > 1e12 {
             return Err(BackendError::BadConfig("invalid present exposure"));
         }
