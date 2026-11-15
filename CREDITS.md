@@ -23,7 +23,7 @@ Software in this repository is dual-licensed MIT OR Apache-2.0 (Helen Kwok, 2026
 | Blue Marble / Black Marble / EPIC | NASA Earth Observatory / EPIC | NASA imagery generally not copyrighted; credit NASA |
 | GEBCO-derived topo/bathy (via NASA EO) | GEBCO Compilation Group | Free use with GEBCO attribution |
 | Copernicus GLO-30 DEM | EU / ESA / DLR / Airbus | Copernicus licence; attribution required |
-| Sentinel-2 cloudless **2020** (default) | EOX s2maps.eu | **CC BY-NC-SA 4.0** (non-commercial + share-alike) |
+| Sentinel-2 cloudless **2020** (default) | EOX s2maps.eu | **CC BY-NC-SA 4.0** (non-commercial + share-alike). Credit: "EOxCloudless https://cloudless.eox.at by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2020)" |
 | Sentinel-2 cloudless **2016** (`S2_LAYER=2016`) | EOX | CC BY 4.0 |
 
 For an Apache/MIT-friendly public demo path, prefer `S2_LAYER=2016` or omit Sentinel imagery from the published tree.
@@ -40,6 +40,74 @@ Derived files from `geo-fetch osm-extract` (`data/geo/osm/derived/<name>/`) are 
 
 No Google data (Street View, satellite, 3D tiles) is used anywhere in this repository.
 
+## Real starfield (RS1)
+
+The RS1 starfield is a derived product of observed catalogues (Gaia DR3, Bailer-Jones
+EDR3 distances, Hipparcos, and GCNS). Raw catalogues, derived binaries and the
+`rs1.rstile` tile file are **not stored in git**. The data are modified from the
+source catalogues: filtered, merged and quantised into RSTILE01 octree tiles.
+This is **not** covered by the MIT OR Apache-2.0 code licence. **All of it is
+non-commercial.** Commercial use needs ESA authorisation
+(`data.licences@esa.int`) and, separately, permission from the GCNS rights
+holders. No such clearance is claimed.
+
+### Gaia DR3
+
+ESA / Gaia / DPAC, via the ESA Gaia archive. Licence: **CC BY-NC 3.0 IGO**
+(https://www.cosmos.esa.int/web/gaia-users/license), together with the ESA Space
+Science Archives terms (https://www.cosmos.esa.int/web/esdc/terms-and-conditions).
+Required credit line: **Credit: ESA, Gaia DPAC**.
+Credit and citation instructions:
+https://gea.esac.esa.int/archive/documentation/GDR3/Miscellaneous/sec_credit_and_citation_instructions/ .
+
+Required citations:
+
+- Gaia Collaboration et al. (2016), “The Gaia mission”, A&A 595, A1,
+  https://doi.org/10.1051/0004-6361/201629272
+- Gaia Collaboration, A. Vallenari et al. (2023), “Gaia Data Release 3: Summary
+  of the content and survey properties”, A&A 674, A1,
+  https://doi.org/10.1051/0004-6361/202243940
+
+Gaia acknowledgement:
+
+This work has made use of data from the European Space Agency (ESA) mission
+Gaia (https://www.cosmos.esa.int/gaia), processed by the Gaia Data Processing
+and Analysis Consortium (DPAC,
+https://www.cosmos.esa.int/web/gaia/dpac/consortium). Funding for the DPAC has
+been provided by national institutions, in particular the institutions
+participating in the Gaia Multilateral Agreement.
+
+### Bailer-Jones EDR3 distances
+
+Used via the ESA archive table `external.gaiaedr3_distance`, joined to Gaia DR3
+and as a Hipparcos fallback. Cite Bailer-Jones et al. (2021), AJ 161, 147
+(2021AJ....161..147B), plus the Gaia acknowledgement above. The producer’s GAVO
+mirror (`gedr3dist.main`) is **CC BY 4.0**. The ESA-archive copy used here falls
+under ESA’s blanket **CC BY-NC 3.0 IGO** terms, so it is treated as
+non-commercial with the other Gaia-derived product. GAVO:
+https://dc.g-vo.org/tableinfo/gedr3dist.main .
+
+### Hipparcos
+
+- **Original catalogues** (ESA 1997, ESA SP-1200; `public.hipparcos`):
+  **CC BY-NC 3.0 IGO**. Required credit line: **Credit: ESA**. Citation: ESA,
+  1997, The Hipparcos and Tycho Catalogues, ESA SP-1200.
+  https://www.cosmos.esa.int/web/hipparcos/catalogues
+- **New reduction** (van Leeuwen 2007; `public.hipparcos_newreduction` via the
+  ESA Gaia archive): no catalogue-specific licence line was found. It is treated
+  as falling under ESA’s archive terms, **CC BY-NC 3.0 IGO** (an inference, not
+  a quoted statement on the Hipparcos-2 page). Required credit line:
+  **Credit: ESA**. Cite van Leeuwen (2007), A&A 474, 653, and the book
+  *Hipparcos, the New Reduction of the Raw Data*, Astrophysics and Space Science
+  Library vol. 350. https://www.cosmos.esa.int/web/hipparcos/hipparcos-2
+
+### GCNS
+
+Gaia Collaboration, R. L. Smart et al. (2021), used as the authoritative
+catalogue within 100 pc. The GAVO mirror states: “Gaia Catalogue of Nearby
+Stars © 2023 by Richard Smart is licensed under CC BY-NC 4.0.”
+https://creativecommons.org/licenses/by-nc/4.0/ . Citation, acknowledgement and
+further terms are in the following section.
 
 ## Gaia EDR3 Catalogue of Nearby Stars (external local input)
 
