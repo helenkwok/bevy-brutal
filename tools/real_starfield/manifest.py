@@ -32,7 +32,7 @@ combined = hashlib.sha256()
 for c in chunks:
     combined.update(f"{c.name} {sha(c)}\n".encode())
 ESA = "https://gea.esac.esa.int/tap-server/tap (ESA Gaia Archive, anonymous async TAP)"
-GAIA_LIC = "Gaia data: ESA/Gaia/DPAC, CC BY-SA 3.0 IGO (Gaia archive terms); cite Gaia Collaboration 2016, 2023 (DR3)"
+GAIA_LIC = "Gaia data: ESA/Gaia/DPAC, CC BY-NC 3.0 IGO (https://www.cosmos.esa.int/web/gaia-users/license ; commercial use needs ESA authorisation, data.licences@esa.int); cite Gaia Collaboration 2016, 2023 (DR3)"
 m = {
     "milestone": "RS1 real observed starfield (no synthesised stars)",
     "generated": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
